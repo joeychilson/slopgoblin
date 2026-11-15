@@ -1242,4 +1242,14 @@ code {
     animation: none !important;
     transition: none !important;
   }
+
+  /* The z's still say it's asleep, standing where they'd drift. */
+  .lurker-z i {
+    opacity: 1;
+    transform: translate(-3px, -5px);
+  }
+
+  .lurker-z i + i {
+    transform: translate(-12px, -17px);
+  }
 }

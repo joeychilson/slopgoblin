@@ -1,7 +1,7 @@
-import { GOBLIN_GLYPH } from "../core/goblin.ts";
-import type { Verdict } from "../core/policy.ts";
+import { EYE_OFF, GOBLIN_GLYPH } from "../core/glyphs.ts";
+import { reason, type Verdict } from "../core/policy.ts";
 import { displayName, type Post } from "../core/post.ts";
-import { CATEGORY, THRESHOLD, inSentence } from "../core/taxonomy.ts";
+import { inSentence } from "../core/taxonomy.ts";
 
 type Author = Post["author"];
 
@@ -56,17 +56,15 @@ function row(view: Exclude<View, { mode: "shown" | "removed" }>) {
     return context(message, [], button("undo", "sg-link sg-primary", "Undo"));
   }
 
-  const { category, score } = view.verdict;
-  const label = category === "ad" ? "Ad" : CATEGORY[category].label;
-  // Only Strict hides posts the model is this unsure about.
-  const why =
-    score < THRESHOLD.balanced
-      ? ["Possibly ", el("strong", "", inSentence(label))]
-      : [el("strong", "", label)];
+  const { category } = view.verdict;
+  const { label, possibly } = reason(view.verdict);
+  const why = possibly
+    ? ["Possibly ", el("strong", "", inSentence(label))]
+    : [el("strong", "", label)];
 
   if (view.mode === "collapsed") {
     // The author's faded avatar stands in for the post. A porn bot's avatar would defeat the point.
-    const mark = category === "nsfw" ? eyeOff() : ghost(view.avatar);
+    const mark = category === "nsfw" ? glyph("0 0 24 24", EYE_OFF, "sg-glyph") : ghost(view.avatar);
     return button("reveal", "sg-row", [
       el("span", "sg-slot", [mark]),
       el("span", "sg-what", [...why, ` from ${name}`]),
@@ -103,29 +101,16 @@ function context(what: string | (string | Node)[], more: Node[], primary?: HTMLE
 
 const SVG = "http://www.w3.org/2000/svg";
 
-function glyph(viewBox: string, paths: string[], className: string) {
+function glyph(viewBox: string, d: string, className: string) {
   const svg = document.createElementNS(SVG, "svg");
   svg.setAttribute("viewBox", viewBox);
   svg.setAttribute("class", className);
   svg.setAttribute("aria-hidden", "true");
-  for (const d of paths) {
-    const path = document.createElementNS(SVG, "path");
-    path.setAttribute("d", d);
-    svg.append(path);
-  }
+  const path = document.createElementNS(SVG, "path");
+  path.setAttribute("d", d);
+  svg.append(path);
   return svg;
 }
-
-const eyeOff = () =>
-  glyph(
-    "0 0 24 24",
-    [
-      "M9.9 5.7A9 9 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 0 1-2 2.8M6.6 6.6C3.9 8.3 2.5 12 2.5 12s3.5 6.5 9.5 6.5a9 9 0 0 0 5.4-1.9",
-      "M9.9 9.9a3 3 0 0 0 4.2 4.2",
-      "M3 3l18 18",
-    ],
-    "sg-glyph",
-  );
 
 /** A blank circle until the avatar has loaded. */
 function ghost(avatar: string | undefined) {
@@ -135,7 +120,7 @@ function ghost(avatar: string | undefined) {
 }
 
 /** In one color, so it takes the line's gray. */
-const goblin = () => glyph(GOBLIN_GLYPH.viewBox, [GOBLIN_GLYPH.d], "sg-goblin");
+const goblin = () => glyph(GOBLIN_GLYPH.viewBox, GOBLIN_GLYPH.d, "sg-goblin");
 
 function el(tag: string, className: string, content: string | (string | Node)[] = []) {
   const node = document.createElement(tag);

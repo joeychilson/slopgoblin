@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { DecisionError, decide } from "../core/decisions.ts";
-import { saveApiKey } from "../core/settings.ts";
+import { store } from "../core/storage.ts";
 import { Den } from "./Den.tsx";
 import { Lurker } from "./Lurker.tsx";
 
@@ -18,10 +18,10 @@ export function Setup() {
     setError(undefined);
     try {
       await decide(candidate, { author: { name: "Test", handle: "test" }, text: "Hello" });
-      await saveApiKey(candidate);
+      await store.apiKey.set(candidate);
     } catch (err) {
       // A rate-limited key is still a working key.
-      if (err instanceof DecisionError && err.kind === "rate") await saveApiKey(candidate);
+      if (err instanceof DecisionError && err.kind === "rate") await store.apiKey.set(candidate);
       else setError(describe(err));
     } finally {
       setChecking(false);

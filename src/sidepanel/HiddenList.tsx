@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { HiddenPost } from "../core/checked.ts";
 import type { RuntimeMessage } from "../core/messages.ts";
+import { reason } from "../core/policy.ts";
 import { displayName } from "../core/post.ts";
 import { updateSettings } from "../core/settings.ts";
-import { CATEGORY, THRESHOLD, inSentence } from "../core/taxonomy.ts";
+import { inSentence } from "../core/taxonomy.ts";
 import { ICONS, Icon } from "./controls.tsx";
 import { sendToTab } from "./hooks.ts";
 
@@ -80,11 +81,8 @@ function Item(props: {
   const row = useRef<HTMLLIElement>(null);
   const isAd = verdict.category === "ad";
   const isNsfw = verdict.category === "nsfw";
-  const label = isAd ? "Ad" : CATEGORY[verdict.category].label;
+  const { label, possibly } = reason(verdict);
   const name = displayName(post);
-  // The same words as the feed.
-  const maybe = verdict.score < THRESHOLD.balanced;
-  const why = maybe ? `Possibly ${inSentence(label)}` : label;
   const actionsId = `actions-${post.id}`;
 
   // Once it has opened, a row near the bottom scrolls up into view.
@@ -147,7 +145,9 @@ function Item(props: {
           <span class="item-body">
             <span class="item-line">
               <span class="item-name">{name}</span>
-              <span class={isAd || maybe ? "item-why is-quiet" : "item-why"}>{why}</span>
+              <span class={isAd || possibly ? "item-why is-quiet" : "item-why"}>
+                {possibly ? `Possibly ${inSentence(label)}` : label}
+              </span>
             </span>
             {/* Explicit text isn't repeated here; the feed covers it too. */}
             <span class={isNsfw || !post.text ? "item-text is-empty" : "item-text"}>

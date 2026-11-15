@@ -1,13 +1,8 @@
 import { DecisionError, decide, questionKey, type Scores } from "../core/decisions.ts";
-import {
-  STATUS_KEY,
-  USAGE_KEY,
-  type ClassifyResponse,
-  type ServiceStatus,
-  type Usage,
-} from "../core/messages.ts";
+import type { ClassifyResponse } from "../core/messages.ts";
 import type { Post } from "../core/post.ts";
 import { loadSettings } from "../core/settings.ts";
+import { store, thisMonth, type ServiceStatus } from "../core/storage.ts";
 import { getEntry, putEntry } from "./cache.ts";
 
 const CONCURRENCY = 4;
@@ -134,7 +129,7 @@ async function setStatus(status: ServiceStatus) {
   const json = JSON.stringify(status);
   if (json === lastStatus) return;
   lastStatus = json;
-  await chrome.storage.session.set({ [STATUS_KEY]: status });
+  await store.status.set(status);
 }
 
 let unsaved = { posts: 0, tokens: 0 };
@@ -148,15 +143,14 @@ function recordUsage(tokens: number) {
     saving = undefined;
     const added = unsaved;
     unsaved = { posts: 0, tokens: 0 };
-    const month = new Date().toISOString().slice(0, 7);
-    const { [USAGE_KEY]: stored } = await chrome.storage.local.get(USAGE_KEY);
-    const before = (stored as Usage | undefined)?.month === month ? (stored as Usage) : undefined;
-    const usage: Usage = {
+    const month = thisMonth();
+    const saved = await store.usage.get();
+    const before = saved?.month === month ? saved : { posts: 0, tokens: 0 };
+    await store.usage.set({
       month,
-      posts: (before?.posts ?? 0) + added.posts,
-      tokens: (before?.tokens ?? 0) + added.tokens,
-    };
-    await chrome.storage.local.set({ [USAGE_KEY]: usage });
+      posts: before.posts + added.posts,
+      tokens: before.tokens + added.tokens,
+    });
   }, 2000);
 }
 

@@ -1,24 +1,8 @@
 import { useEffect, useState } from "preact/hooks";
 import { CHECKED_PREFIX, type CheckedPost } from "../core/checked.ts";
-import {
-  STATUS_KEY,
-  THEME_KEY,
-  USAGE_KEY,
-  type RuntimeMessage,
-  type ServiceStatus,
-  type SiteTheme,
-  type TabMessage,
-  type TabState,
-  type Usage,
-} from "../core/messages.ts";
-import {
-  loadApiKey,
-  loadSettings,
-  watchApiKey,
-  watchSettings,
-  watchStorage,
-  type Settings,
-} from "../core/settings.ts";
+import type { RuntimeMessage, TabMessage, TabState } from "../core/messages.ts";
+import { loadSettings, watchSettings, type Settings } from "../core/settings.ts";
+import { store, thisMonth, type Stored } from "../core/storage.ts";
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>();
@@ -29,38 +13,28 @@ export function useSettings() {
   return settings;
 }
 
-/** `undefined` while loading, `null` when no key is saved. */
-export function useApiKey() {
-  const [key, setKey] = useState<string | null>();
+/** A stored value, kept live: `undefined` while it loads, `null` when there's none. */
+function useStored<T>(item: Stored<T>): T | null | undefined {
+  const [value, setValue] = useState<T | null>();
   useEffect(() => {
-    void loadApiKey().then((k) => setKey(k ?? null));
-    return watchApiKey((k) => setKey(k ?? null));
-  }, []);
-  return key;
-}
-
-export function useStatus() {
-  const [status, setStatus] = useState<ServiceStatus>({ kind: "ok" });
-  useEffect(() => {
-    void chrome.storage.session.get(STATUS_KEY).then((stored) => {
-      if (stored[STATUS_KEY]) setStatus(stored[STATUS_KEY] as ServiceStatus);
+    let changed = false;
+    void item.get().then((saved) => changed || setValue(saved ?? null));
+    return item.watch((next) => {
+      changed = true;
+      setValue(next ?? null);
     });
-    return watchStorage<ServiceStatus>("session", STATUS_KEY, (next) => next && setStatus(next));
-  }, []);
-  return status;
+  }, [item]);
+  return value;
 }
 
-/** This month's checking, or undefined before anything has been checked. */
+export const useApiKey = () => useStored(store.apiKey);
+
+export const useStatus = () => useStored(store.status) ?? { kind: "ok" as const };
+
+/** This month's checking, or nothing before anything has been checked. */
 export function useUsage() {
-  const [usage, setUsage] = useState<Usage>();
-  useEffect(() => {
-    const month = new Date().toISOString().slice(0, 7);
-    const show = (stored: Usage | undefined) =>
-      setUsage(stored?.month === month ? stored : undefined);
-    void chrome.storage.local.get(USAGE_KEY).then((stored) => show(stored[USAGE_KEY] as Usage));
-    return watchStorage<Usage>("local", USAGE_KEY, show);
-  }, []);
-  return usage;
+  const usage = useStored(store.usage);
+  return usage?.month === thisMonth() ? usage : undefined;
 }
 
 /** Every post checked since Chrome started, in any tab, newest first and kept live. Undefined while loading. */
@@ -98,16 +72,11 @@ export function useChecked() {
 
 /** Dresses the panel in the same light, dim or dark as the site, once a page has said which. */
 export function useSiteTheme() {
+  const theme = useStored(store.siteTheme);
   useEffect(() => {
-    const apply = (theme: SiteTheme | undefined) => {
-      if (theme) document.documentElement.dataset.theme = theme;
-      else delete document.documentElement.dataset.theme;
-    };
-    void chrome.storage.local
-      .get(THEME_KEY)
-      .then((stored) => apply(stored[THEME_KEY] as SiteTheme | undefined));
-    return watchStorage<SiteTheme>("local", THEME_KEY, apply);
-  }, []);
+    if (theme) document.documentElement.dataset.theme = theme;
+    else delete document.documentElement.dataset.theme;
+  }, [theme]);
 }
 
 export interface ActiveTab {

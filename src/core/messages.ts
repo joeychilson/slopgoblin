@@ -29,28 +29,3 @@ export interface TabState {
   /** Posts are on the page but can't be read: the site's markup probably changed. */
   broken: boolean;
 }
-
-export type ServiceStatus =
-  | { kind: "ok" }
-  | { kind: "bad-key"; message: string }
-  | { kind: "rate-limited"; until: number }
-  | { kind: "offline" }
-  /** The API rejected a request for a reason retrying won't fix. */
-  | { kind: "error"; message: string };
-
-export const STATUS_KEY = "status";
-
-/** What this month's checking has used, kept in `chrome.storage.local`. */
-export interface Usage {
-  /** "2026-11". */
-  month: string;
-  posts: number;
-  tokens: number;
-}
-
-export const USAGE_KEY = "usage";
-
-/** The site's light, dim or dark background, last seen. The side panel matches it. */
-export type SiteTheme = "light" | "dim" | "dark";
-
-export const THEME_KEY = "siteTheme";

@@ -1,5 +1,6 @@
 import type { ClassifyResponse, RuntimeMessage, TabMessage } from "../core/messages.ts";
-import { loadApiKey, updateSettings, watchApiKey } from "../core/settings.ts";
+import { updateSettings } from "../core/settings.ts";
+import { store } from "../core/storage.ts";
 import { startBadge, updateBadge } from "./badge.ts";
 import { prune } from "./cache.ts";
 import { recordChecked, updateChecked } from "./checked.ts";
@@ -8,8 +9,8 @@ import { classify, setApiKey, setNotSlop } from "./classifier.ts";
 void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 startBadge();
 
-const keyLoaded = loadApiKey().then((key) => setApiKey(key, false));
-watchApiKey((key) => setApiKey(key, true));
+const keyLoaded = store.apiKey.get().then((key) => setApiKey(key, false));
+store.apiKey.watch((key) => setApiKey(key, true));
 void prune();
 
 /** Where the content scripts run, from the manifest. */

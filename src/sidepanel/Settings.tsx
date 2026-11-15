@@ -1,8 +1,8 @@
 import type { HiddenPost } from "../core/checked.ts";
 import { USD_PER_MILLION_TOKENS } from "../core/decisions.ts";
-import { GOBLIN_GLYPH } from "../core/goblin.ts";
-import type { Usage } from "../core/messages.ts";
-import { saveApiKey, updateSettings, type Settings as SettingsData } from "../core/settings.ts";
+import { GOBLIN_GLYPH } from "../core/glyphs.ts";
+import { updateSettings, type Settings as SettingsData } from "../core/settings.ts";
+import { store, type Usage } from "../core/storage.ts";
 import { CATEGORIES } from "../core/taxonomy.ts";
 import { ICONS, Icon, Segments, Switch } from "./controls.tsx";
 import { useUsage } from "./hooks.ts";
@@ -133,7 +133,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
           <span>
             Key ending in <code>{apiKey.slice(-4)}</code>
           </span>
-          <button type="button" class="button small" onClick={() => void saveApiKey(null)}>
+          <button type="button" class="button small" onClick={() => void store.apiKey.remove()}>
             Replace
           </button>
         </div>

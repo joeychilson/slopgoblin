@@ -1,3 +1,4 @@
+import { stored } from "./storage.ts";
 import { CATEGORIES, type CategoryId, type Strictness } from "./taxonomy.ts";
 
 export interface Settings {
@@ -27,51 +28,23 @@ export const DEFAULT_SETTINGS: Settings = {
   trustFollowing: true,
 };
 
-const KEY = "settings";
+/** Synced through the reader's Chrome profile. */
+const saved = stored<Partial<Settings>>("sync", "settings");
 
-export async function loadSettings(): Promise<Settings> {
-  const { [KEY]: stored } = await chrome.storage.sync.get(KEY);
-  return withDefaults(stored as Partial<Settings> | undefined);
-}
+export const loadSettings = async () => withDefaults(await saved.get());
 
 export async function updateSettings(patch: (s: Settings) => Partial<Settings>) {
   const current = await loadSettings();
-  await chrome.storage.sync.set({ [KEY]: { ...current, ...patch(current) } });
+  await saved.set({ ...current, ...patch(current) });
 }
 
 export const watchSettings = (onChange: (s: Settings) => void) =>
-  watchStorage<Partial<Settings>>("sync", KEY, (stored) => onChange(withDefaults(stored)));
+  saved.watch((s) => onChange(withDefaults(s)));
 
-function withDefaults(stored: Partial<Settings> | undefined): Settings {
+function withDefaults(saved: Partial<Settings> | undefined): Settings {
   return {
     ...DEFAULT_SETTINGS,
-    ...stored,
-    categories: { ...DEFAULT_SETTINGS.categories, ...stored?.categories },
+    ...saved,
+    categories: { ...DEFAULT_SETTINGS.categories, ...saved?.categories },
   };
-}
-
-const API_KEY = "apiKey";
-
-export async function loadApiKey(): Promise<string | undefined> {
-  const { [API_KEY]: key } = await chrome.storage.local.get(API_KEY);
-  return typeof key === "string" && key ? key : undefined;
-}
-
-export const saveApiKey = (key: string | null) =>
-  key ? chrome.storage.local.set({ [API_KEY]: key }) : chrome.storage.local.remove(API_KEY);
-
-export const watchApiKey = (onChange: (key: string | undefined) => void) =>
-  watchStorage<string>("local", API_KEY, (key) => onChange(key || undefined));
-
-/** Calls `onChange` with the new value whenever `key` changes in the given storage area. Returns an unsubscribe. */
-export function watchStorage<T>(
-  area: chrome.storage.AreaName,
-  key: string,
-  onChange: (value: T | undefined) => void,
-): () => void {
-  const listener = (changes: Record<string, chrome.storage.StorageChange>, changedArea: string) => {
-    if (changedArea === area && key in changes) onChange(changes[key]?.newValue as T | undefined);
-  };
-  chrome.storage.onChanged.addListener(listener);
-  return () => chrome.storage.onChanged.removeListener(listener);
 }

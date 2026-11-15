@@ -1,5 +1,5 @@
-import { THEME_KEY, type SiteTheme } from "../core/messages.ts";
 import { loadSettings } from "../core/settings.ts";
+import { store, type SiteTheme } from "../core/storage.ts";
 import type { SiteAdapter } from "../sites/site.ts";
 import { x } from "../sites/x.ts";
 import css from "./content.css?inline";
@@ -31,5 +31,5 @@ function syncTheme() {
   if (document.documentElement.dataset.sgTheme === theme) return;
   document.documentElement.dataset.sgTheme = theme;
   // Unreachable once the extension is reloaded; the next page load catches up.
-  if (chrome.runtime?.id) void chrome.storage.local.set({ [THEME_KEY]: theme }).catch(() => {});
+  if (chrome.runtime?.id) void store.siteTheme.set(theme).catch(() => {});
 }

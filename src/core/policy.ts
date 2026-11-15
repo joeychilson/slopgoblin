@@ -1,12 +1,23 @@
 import type { Scores } from "./decisions.ts";
 import type { Settings } from "./settings.ts";
-import { CATEGORIES, THRESHOLD, type CategoryId } from "./taxonomy.ts";
+import { CATEGORIES, CATEGORY, THRESHOLD, type CategoryId } from "./taxonomy.ts";
 
 export interface Verdict {
   /** The likeliest of the categories switched on. */
   category: CategoryId;
   /** The probability the post is in any category switched on. */
   score: number;
+}
+
+/**
+ * How a verdict reads, the same in the feed and in the side panel: the category's label ("Ad"
+ * for an ad), hedged with "Possibly" when only Strict would hide the post.
+ */
+export function reason({ category, score }: Verdict) {
+  return {
+    label: category === "ad" ? "Ad" : CATEGORY[category].label,
+    possibly: score < THRESHOLD.balanced,
+  };
 }
 
 /** What a post's verdict rests on: the model's answer, and what's known about who posted it. */

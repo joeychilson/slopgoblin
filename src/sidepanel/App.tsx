@@ -1,8 +1,8 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { hiddenAmong } from "../core/checked.ts";
-import type { ServiceStatus } from "../core/messages.ts";
-import { saveApiKey, updateSettings, type Settings as SettingsData } from "../core/settings.ts";
+import { updateSettings, type Settings as SettingsData } from "../core/settings.ts";
+import { store, type ServiceStatus } from "../core/storage.ts";
 import { ICONS, Icon, Switch } from "./controls.tsx";
 import { Den } from "./Den.tsx";
 import { HiddenList } from "./HiddenList.tsx";
@@ -144,7 +144,7 @@ function noticeFor(
       body: status.message,
       error: true,
       action: (
-        <button type="button" class="button small" onClick={() => void saveApiKey(null)}>
+        <button type="button" class="button small" onClick={() => void store.apiKey.remove()}>
           Replace key
         </button>
       ),

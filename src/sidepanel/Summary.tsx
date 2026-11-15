@@ -12,16 +12,22 @@ import type { ActiveTab } from "./hooks.ts";
  */
 export function Summary(props: { tab?: ActiveTab; settings: Settings; checked: CheckedPost[] }) {
   const { tab, settings, checked } = props;
-  const counts = settings.enabled && checked.length ? hiddenAtEach(checked, settings) : undefined;
+  // Strictness changes nothing while filtering is off, so it isn't offered.
+  if (!settings.enabled) {
+    return (
+      <section class="summary" aria-label="Summary">
+        <Message title="Filtering is off">
+          Nothing is hidden, and no posts are sent to Google.
+        </Message>
+      </section>
+    );
+  }
+  const counts = checked.length ? hiddenAtEach(checked, settings) : undefined;
   // Tabs opened before the extension was installed don't have the content script yet.
   const reloadId = tab?.url?.startsWith("https://x.com/") && !tab.state ? tab.id : undefined;
   return (
     <section class="summary" aria-label="Summary">
-      {!settings.enabled ? (
-        <Message title="Filtering is off">
-          Nothing is hidden, and no posts are sent to Google.
-        </Message>
-      ) : reloadId !== undefined ? (
+      {reloadId !== undefined ? (
         <Message
           title="Reload to start"
           action={<Button onClick={() => chrome.tabs.reload(reloadId)}>Reload tab</Button>}

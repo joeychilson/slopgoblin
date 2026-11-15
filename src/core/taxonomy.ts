@@ -27,13 +27,14 @@ export const THRESHOLD: Record<Strictness, number> = { relaxed: 0.85, balanced: 
 export const STRICTNESS = Object.keys(THRESHOLD) as Strictness[];
 
 /**
- * What each strictness costs, as `vp run eval` measures it on timelines and reply threads.
- * Re-measure after moving a threshold.
+ * What each strictness costs, in a few words, as `vp run eval` measures it on timelines and
+ * reply threads: Relaxed catches about half the junk and hid no real post, Balanced about 9 in
+ * 10 and 1 real post in 200, Strict nearly all and 1 in 30. Re-measure after moving a threshold.
  */
 export const TRADEOFF: Record<Strictness, string> = {
-  relaxed: "Hides only the unmistakable. About half the junk gets through.",
-  balanced: "Catches most of the junk. About 1 real post in 200 is hidden by mistake.",
-  strict: "Catches nearly all of it. About 1 real post in 30 is hidden by mistake.",
+  relaxed: "Hides only the obvious junk.",
+  balanced: "Hides most junk, rarely a real post.",
+  strict: "Hides nearly all junk, some real posts too.",
 };
 
 export const CATEGORIES = [

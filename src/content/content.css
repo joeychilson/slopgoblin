@@ -1,0 +1,168 @@
+/* X's own grays per theme, so the bar reads as part of the timeline. */
+:root {
+  --sg-fg: #536471;
+  --sg-fg-strong: #0f1419;
+  --sg-line: #eff3f4;
+  --sg-rule: #cfd9de;
+  --sg-hover: rgb(15 20 25 / 0.03);
+  --sg-tint: rgb(15 20 25 / 0.035);
+  --sg-link: #1d9bf0;
+}
+
+:root[data-sg-theme="dim"] {
+  --sg-fg: #8b98a5;
+  --sg-fg-strong: #f7f9f9;
+  --sg-line: #38444d;
+  --sg-rule: #425364;
+  --sg-hover: rgb(247 249 249 / 0.03);
+  --sg-tint: rgb(247 249 249 / 0.04);
+}
+
+:root[data-sg-theme="dark"] {
+  --sg-fg: #71767b;
+  --sg-fg-strong: #e7e9ea;
+  --sg-line: #2f3336;
+  --sg-rule: #3e4144;
+  --sg-hover: rgb(231 233 234 / 0.03);
+  --sg-tint: rgb(231 233 234 / 0.045);
+}
+
+[data-sg="collapsed"] > :not(.sg-bar),
+[data-sg="removed"] {
+  display: none !important;
+}
+
+[data-sg="revealed"] > * {
+  box-shadow: inset 2px 0 0 var(--sg-rule);
+}
+
+.sg-bar {
+  color: var(--sg-fg);
+  font:
+    400 15px/20px TwitterChirp,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  border-bottom: 1px solid var(--sg-line);
+}
+
+[data-sg="revealed"] > .sg-bar,
+[data-sg="confirmed"] > .sg-bar {
+  border-bottom: 0;
+  background: var(--sg-tint);
+}
+
+/* Zero specificity, so the classes below win over the reset. */
+:where(.sg-bar) button {
+  all: unset;
+  cursor: pointer;
+}
+
+.sg-bar button:focus-visible {
+  outline: 2px solid var(--sg-link);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.sg-bar strong {
+  color: var(--sg-fg-strong);
+  font-weight: 600;
+}
+
+/* Lined up with X's post grid: a 40px avatar column, then text 64px in. */
+.sg-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 16px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 16px 10px 64px;
+}
+
+button.sg-row {
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 16px;
+}
+
+button.sg-row:hover {
+  background: var(--sg-hover);
+}
+
+.sg-slot {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  width: 40px;
+}
+
+.sg-ghost {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sg-line) center / cover;
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+.sg-glyph {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sg-what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sg-show {
+  flex: none;
+  color: var(--sg-link);
+}
+
+button.sg-row:hover .sg-show,
+.sg-link:hover {
+  text-decoration: underline;
+}
+
+.sg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin-left: auto;
+}
+
+.sg-link:hover {
+  color: var(--sg-fg-strong);
+}
+
+.sg-link.sg-primary {
+  color: var(--sg-link);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sg-bar {
+    animation: sg-in 160ms ease-out;
+  }
+}
+
+@keyframes sg-in {
+  from {
+    opacity: 0;
+  }
+}

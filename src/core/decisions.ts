@@ -1,4 +1,4 @@
-import type { PostContent } from "./post.ts";
+import type { PostContent, ReaderNote } from "./post.ts";
 import { CATEGORIES, FINE, QUESTION, type CategoryId } from "./taxonomy.ts";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/decisions";
@@ -23,8 +23,17 @@ const keyFor = (isReply: boolean) =>
 const POST_KEY = keyFor(false);
 const REPLY_KEY = keyFor(true);
 
-/** Fingerprints the question a post gets asked. A cached answer under another key is stale. */
-export const questionKey = (post: PostContent) => (post.replyTo ? REPLY_KEY : POST_KEY);
+/**
+ * Fingerprints the question a post gets asked. A cached answer under another key is stale.
+ * Reader notes are part of it: one can turn up hours after a post was first judged.
+ */
+export function questionKey(post: PostContent) {
+  const key = post.replyTo ? REPLY_KEY : POST_KEY;
+  const notes = [post.readerNote, post.quote?.readerNote].flatMap((n) =>
+    n ? [n.rated, n.text] : [],
+  );
+  return notes.length ? `${key}.${hash(notes.join("|"))}` : key;
+}
 
 type DecisionErrorKind = "auth" | "rate" | "blocked" | "media" | "transient" | "fatal";
 
@@ -109,12 +118,27 @@ function describePost(post: PostContent, imageCount: number): string {
     lines.push(`Replying to @${replyTo.handle}, who posted:`, tag("parent", parent, 600));
   }
   lines.push(tag("post", post.text || "(no text)", 2000));
+  if (post.readerNote) lines.push(...describeNote(post.readerNote, "the post"));
   if (quote) {
     lines.push(`Quoting @${quote.handle}:`, tag("quoted", quote.text || "(no text)", 600));
+    if (quote.readerNote) {
+      lines.push(
+        ...describeNote(quote.readerNote, "the quoted post"),
+        // Without this a post gets judged apart from the fake it passes along.
+        "A post that repeats, reacts to or builds on what a note calls false, fake, AI-made or bait is junk of that kind too, unless it corrects the quoted post or calls it out. A note that only adds context or fixes a detail changes nothing.",
+      );
+    }
   }
   if (post.link) lines.push(`Link card: ${clip(post.link, 200)}`);
   if (imageCount) lines.push(`Attached image${imageCount > 1 ? "s" : ""} follow.`);
   return lines.join("\n");
+}
+
+function describeNote(note: ReaderNote, target: string) {
+  const how = note.rated
+    ? "Readers added this community note"
+    : "Readers proposed this community note (others have not rated it yet)";
+  return [`${how} to ${target}:`, tag("note", note.text, 500)];
 }
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);

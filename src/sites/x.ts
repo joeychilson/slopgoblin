@@ -1,4 +1,4 @@
-import type { Post } from "../core/post.ts";
+import type { Post, ReaderNote } from "../core/post.ts";
 import type { SiteAdapter } from "./site.ts";
 
 // X's class names are generated; data-testid attributes are the stable hooks.
@@ -11,6 +11,9 @@ const SEL = {
   showMore: '[data-testid="tweet-text-show-more-link"]',
   quoteText: '[data-testid="tweetText"], div[lang]',
   card: '[data-testid="card.wrapper"]',
+  // Community notes. X's code still calls them by their first name, Birdwatch.
+  note: '[data-testid="birdwatch-pivot"]',
+  unratedNote: '[data-testid="icon-birdwatch-level"]',
   permalink: 'a[href*="/status/"]:has(time)',
   // Promoted posts sit inside one of these. X also wraps videos in it, but inside the post.
   ad: '[data-testid="placementTracking"]',
@@ -54,9 +57,13 @@ export const x: SiteAdapter = {
       isAd,
     };
 
+    const note = readNote(own.find(SEL.note));
+    if (note) post.readerNote = note;
     const quoteHandle = handleIn(quote?.querySelector(SEL.user));
     if (quote && quoteHandle) {
       post.quote = { handle: quoteHandle, text: textOf(quote.querySelector(SEL.quoteText)) };
+      const quoteNote = readNote(quote.querySelector(SEL.note));
+      if (quoteNote) post.quote.readerNote = quoteNote;
     }
     const card = own.find(SEL.card);
     if (card) post.link = textOf(card).replace(/\s+/g, " ");
@@ -158,9 +165,24 @@ function asReply(el: Element): Reply | undefined {
   return own?.handle ? { handle: own.handle, text: textOf(own.find(SEL.text)) } : undefined;
 }
 
+/** The box under a post is a heading, the note, then a prompt to rate it. */
+function readNote(box: Element | null | undefined): ReaderNote | undefined {
+  // Of the three, only the note is a direct child that sets a text direction.
+  const body = box?.querySelector(":scope > [dir]");
+  if (!box || !body) return undefined;
+  // A note ends with its sources, as links X has cut short.
+  const parts = [...body.childNodes];
+  while (parts.length && (parts.at(-1)!.nodeName === "A" || !rawText(parts.at(-1)!).trim())) {
+    parts.pop();
+  }
+  const text = parts.map(rawText).join("").trim();
+  return text ? { text, rated: !box.querySelector(SEL.unratedNote) } : undefined;
+}
+
 function images(el: Element): string[] {
+  // Once a video starts loading its src is a blob, so its poster comes first.
   const sources = [...el.querySelectorAll("img, video[poster]")].map(
-    (node) => node.getAttribute("src") ?? node.getAttribute("poster") ?? "",
+    (node) => node.getAttribute("poster") ?? node.getAttribute("src") ?? "",
   );
   return [...new Set(sources.filter((src) => MEDIA.test(src)).map(smallRendition))];
 }
@@ -186,14 +208,12 @@ function handleIn(user: Element | null | undefined) {
 
 /** Text with emoji (rendered by X as <img alt>) put back in. */
 function textOf(node: Element | null | undefined): string {
-  if (!node) return "";
-  let out = "";
-  const walk = (n: Node) => {
-    if (n.nodeType === Node.TEXT_NODE) out += n.nodeValue;
-    else if (n instanceof HTMLImageElement) out += n.alt;
-    else if (n.nodeName === "BR") out += "\n";
-    else n.childNodes.forEach(walk);
-  };
-  walk(node);
-  return out.trim();
+  return node ? rawText(node).trim() : "";
+}
+
+function rawText(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ?? "";
+  if (node instanceof HTMLImageElement) return node.alt;
+  if (node.nodeName === "BR") return "\n";
+  return [...node.childNodes].map(rawText).join("");
 }

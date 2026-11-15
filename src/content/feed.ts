@@ -59,6 +59,11 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       if (site.isFocused(el)) continue;
       el.setAttribute(ID_ATTR, post.id);
       const t = posts.get(post.id) ?? track(post);
+      // A note can turn up on a post that was judged without one. It's worth asking again.
+      if (t.status === "done" && hasNote(post) && !hasNote(t.post)) {
+        t.post = post;
+        t.status = "idle";
+      }
       if (wantsRequest(t)) void request(t);
       show(t, el, true);
     }
@@ -244,6 +249,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   }
 
   const handleOf = (t: Tracked) => t.post.author.handle.toLowerCase();
+  const hasNote = (post: Post) => Boolean(post.readerNote ?? post.quote?.readerNote);
 
   function onTabMessage(
     message: TabMessage,

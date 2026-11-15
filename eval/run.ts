@@ -126,9 +126,9 @@ const cell = (value: string | number, width: number) => String(value).padStart(w
 const levelHeads = STRICTNESS.map((s) => `${s} ≥${THRESHOLD[s]}`.padStart(15)).join("  ");
 
 // What a reader feels: posts that should have stayed but were hidden, and junk that was caught.
-console.log(`\n${"".padEnd(23)}${levelHeads}`);
+console.log(`\n${"".padEnd(26)}${levelHeads}`);
 console.log(
-  `${"set".padEnd(11)}${cell("clean", 6)}${cell("junk", 6)}${STRICTNESS.map(() => "    wrong  caught").join("")}`,
+  `${"set".padEnd(14)}${cell("clean", 6)}${cell("junk", 6)}${STRICTNESS.map(() => "    wrong  caught").join("")}`,
 );
 const total = { name: "all", rows: all };
 for (const { name, rows } of sets.length > 1 ? [...sets, total] : sets) {
@@ -136,7 +136,7 @@ for (const { name, rows } of sets.length > 1 ? [...sets, total] : sets) {
     (s) => `${cell(hidden(clean(rows), s), 9)}${cell(hidden(junk(rows), s), 8)}`,
   );
   console.log(
-    `${name.padEnd(11)}${cell(clean(rows).length, 6)}${cell(junk(rows).length, 6)}${cells.join("")}`,
+    `${name.padEnd(14)}${cell(clean(rows).length, 6)}${cell(junk(rows).length, 6)}${cells.join("")}`,
   );
 }
 

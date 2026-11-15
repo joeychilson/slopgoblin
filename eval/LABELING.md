@@ -7,7 +7,8 @@ Each line of `posts.jsonl` (and of any `real/*.jsonl`) is one post as the extens
   "id": "x:2121767519170269395",
   "author": { "name": "Display name", "handle": "handle" },
   "text": "…",
-  "quote": { "handle": "…", "text": "…" },
+  "readerNote": { "text": "…", "rated": true },
+  "quote": { "handle": "…", "text": "…", "readerNote": { "text": "…", "rated": false } },
   "replyTo": { "handle": "…", "text": "…" },
   "link": "example.com · Headline",
   "images": ["https://pbs.twimg.com/media/…?format=jpg&name=small"],
@@ -18,6 +19,8 @@ Each line of `posts.jsonl` (and of any `real/*.jsonl`) is one post as the extens
 ```
 
 `labels` lists every category the post fits, best first. Empty means it should stay. `unsure` marks a post a thoughtful reader could call either way: it's still scored, and shows up under `--misses` if you want to look, but it counts for nothing in the totals. Only `id`, `author`, `text` and `labels` are required.
+
+`readerNote` is a community note X shows under the post, or under the post it quotes. `rated` is false while X still calls it proposed. A note is evidence about a post, not a verdict on it: label what the post is. A real post stays a real post under a note that adds context or fixes a detail. A post that passes along something a note calls fake or bait, without correcting it, is junk of that kind; one that corrects it or calls it out stays. A reaction too short to tell which it is doing is unsure.
 
 The reader wants junk gone, not posts they'd merely skip. Ordinary posts by real people stay, even low-effort, opinionated, crude or boring ones. A real post hidden by mistake is worse than a piece of junk let through, so when in doubt, mark it unsure rather than junk.
 

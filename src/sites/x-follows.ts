@@ -5,7 +5,7 @@
  * follow status, nothing else, to `watchFollows` in the content script, over DOM events.
  */
 
-export type Follows = [handle: string, following: boolean][];
+type Follows = [handle: string, following: boolean][];
 
 /** Page to content script: JSON `Follows`, lowercase handles. */
 const FOLLOWS = "slopgoblin:follows";

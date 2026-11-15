@@ -20,7 +20,7 @@ export function Switch(props: {
   );
 }
 
-export interface Segment<T extends string> {
+interface Segment<T extends string> {
   value: T;
   label: string;
   /** Shown after the label: what picking this one would mean here. */

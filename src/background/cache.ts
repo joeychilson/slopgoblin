@@ -1,7 +1,7 @@
 import type { Scores } from "../core/decisions.ts";
 
 /** A post's cached answer. */
-export interface Entry {
+interface Entry {
   id: string;
   /** The `questionKey` the scores answer. Rewording the question makes them stale. */
   key: string;

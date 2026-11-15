@@ -18,7 +18,13 @@
   --on-ground-hover: rgb(255 255 255 / 0.14);
   --ground-track: rgb(255 255 255 / 0.26);
   --ground-switch: #c4de85;
-  --lurker: #3d5c12;
+  --goblin-hi: #a6de44;
+  --goblin-mid: #6ca620;
+  --goblin-lo: #41680f;
+  --goblin-deep: #264007;
+  --goblin-rim: #e2fc9a;
+  --goblin-outline: #1b2e06;
+  --goblin-hand-shadow: rgb(9 17 2 / 0.2);
   --sheet: #fbfaf3;
   --ink: #1b2412;
   --ink-2: #3a4531;
@@ -49,7 +55,13 @@
   --on-ground-hover: rgb(255 255 255 / 0.08);
   --ground-track: rgb(255 255 255 / 0.16);
   --ground-switch: #93b84e;
-  --lurker: #5d7f1f;
+  --goblin-hi: #a8df46;
+  --goblin-mid: #6fa922;
+  --goblin-lo: #436c10;
+  --goblin-deep: #274207;
+  --goblin-rim: #dcfa8e;
+  --goblin-outline: #111d03;
+  --goblin-hand-shadow: rgb(0 0 0 / 0.48);
   --sheet: #12170e;
   --ink: #edf2e4;
   --ink-2: #c3cbb7;
@@ -75,7 +87,13 @@
     --on-ground-hover: rgb(255 255 255 / 0.08);
     --ground-track: rgb(255 255 255 / 0.16);
     --ground-switch: #93b84e;
-    --lurker: #5d7f1f;
+    --goblin-hi: #a8df46;
+    --goblin-mid: #6fa922;
+    --goblin-lo: #436c10;
+    --goblin-deep: #274207;
+    --goblin-rim: #dcfa8e;
+    --goblin-outline: #111d03;
+    --goblin-hand-shadow: rgb(0 0 0 / 0.48);
     --sheet: #12170e;
     --ink: #edf2e4;
     --ink-2: #c3cbb7;
@@ -217,38 +235,86 @@ code {
   --from: -20px;
 }
 
-/* The drawing is 80px for 32 units, and its edge-line is at 21 units: the sheet cuts it at
-   the bottom of the eyes, so the mouth stays behind it. */
+/* 108×84 at 1px per unit; the sheet's top edge cuts across y=50 right under the nose tip,
+   keeping the fanged mouth tucked behind the sheet until the goblin lunges up to chomp. */
 .lurker {
   position: absolute;
   z-index: 0;
-  top: -52px;
-  right: 28px;
-  width: 80px;
-  height: 80px;
+  top: -50px;
+  right: 26px;
+  width: 108px;
+  height: 84px;
   overflow: visible;
+  pointer-events: none;
 }
 
-.lurker-head {
-  fill: var(--lurker);
-  transition: fill 300ms;
+.goblin-stop-hi {
+  stop-color: var(--goblin-hi);
 }
 
-.lurker-whites {
-  fill: #f4f6f0;
+.goblin-stop-mid {
+  stop-color: var(--goblin-mid);
 }
 
-.lurker-pupils {
-  fill: #1c2117;
-  transition: transform 180ms ease-out;
+.goblin-stop-lo {
+  stop-color: var(--goblin-lo);
 }
 
+.goblin-stop-deep {
+  stop-color: var(--goblin-deep);
+}
+
+.lurker-outline {
+  stroke: var(--goblin-outline);
+}
+
+.lurker-rim {
+  stroke: var(--goblin-rim);
+  opacity: 0.62;
+}
+
+.lurker-cheek {
+  fill: var(--goblin-hi);
+  opacity: 0.28;
+}
+
+.lurker-nose {
+  fill: var(--goblin-lo);
+}
+
+.lurker-nostril {
+  fill: var(--goblin-outline);
+}
+
+.lurker-brow-hi {
+  stroke: var(--goblin-hi);
+  opacity: 0.75;
+}
+
+.lurker-pupils,
+.lurker-glints,
+.lurker-brows {
+  transition: transform 170ms ease-out;
+}
+
+.lurker-open,
 .lurker-shut {
-  fill: none;
-  stroke: #f4f6f0;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  animation: fade 200ms ease-out;
+  animation: fade 180ms ease-out;
+}
+
+.lurker-sleep-lid {
+  fill: #4f7c15;
+  stroke: var(--goblin-outline);
+}
+
+.lurker-lid {
+  fill: var(--goblin-mid);
+  stroke: var(--goblin-outline);
+  stroke-width: 1.6;
+  transform-box: fill-box;
+  transform-origin: top;
+  transform: scaleY(0);
+  animation: blink 5.8s 2s infinite;
 }
 
 /* It peeks up from behind the sheet when the panel opens. */
@@ -260,9 +326,9 @@ code {
   transition: transform 700ms var(--glide);
 }
 
-/* Asleep, it sinks a little and breathes slowly. */
+/* Asleep, it sinks into its den and breathes slowly. */
 .is-asleep .lurker-sink {
-  transform: translateY(0.8px);
+  transform: translateY(5.5px);
 }
 
 .lurker-jaw {
@@ -276,40 +342,67 @@ code {
 
 @keyframes breathe {
   50% {
-    transform: translateY(-0.5px) scale(1.015, 0.985);
+    transform: translateY(-0.8px) scale(1.015, 0.985);
   }
-}
-
-.lurker-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: blink 5.8s 2s infinite;
 }
 
 .lurker-hands {
   position: absolute;
   z-index: 2;
-  top: -5px;
-  right: 28px;
+  top: -7px;
+  right: 26px;
   display: flex;
   justify-content: space-between;
-  width: 80px;
-  padding: 0 9px;
-  fill: var(--lurker);
+  width: 108px;
+  padding: 0 7px;
   pointer-events: none;
   animation: grip 420ms var(--glide) 420ms both;
 }
 
-.lurker-hands svg {
+.lurker-hand {
   display: block;
+  transform-origin: 14px 9px;
+  transition: transform 380ms var(--spring);
 }
 
-/* Off the goblin's left ear, drifting up and away from the header's controls. */
+/* While a key is typed in, the hands let go of the sheet and clap up over its eyes. */
+.lurker-hands.is-shy .lurker-hand.is-left {
+  transform: translate(13px, -11px) rotate(-152deg);
+}
+
+.lurker-hands.is-shy .lurker-hand.is-right {
+  transform: translate(-13px, -11px) rotate(152deg);
+}
+
+.lurker-hand-shadow {
+  fill: var(--goblin-hand-shadow);
+  transition: opacity 220ms;
+}
+
+.lurker-hands.is-shy .lurker-hand-shadow {
+  opacity: 0.55;
+}
+
+.lurker-palm {
+  opacity: 0;
+  transition: opacity 180ms;
+}
+
+.lurker-hands.is-shy .lurker-palm {
+  opacity: 1;
+}
+
+.lurker-knuckle {
+  fill: var(--goblin-rim);
+  opacity: 0.58;
+}
+
+/* Off the goblin's notched left ear, drifting up and away from the header's controls. */
 .lurker-z {
   position: absolute;
   z-index: 2;
   top: -42px;
-  right: 92px;
+  right: 126px;
   color: var(--on-ground-muted);
   font: 800 13px/1 var(--display);
   pointer-events: none;
@@ -330,7 +423,7 @@ code {
 
 @keyframes rise {
   from {
-    transform: translateY(15px);
+    transform: translateY(18px);
   }
 }
 
@@ -343,12 +436,12 @@ code {
 
 @keyframes blink {
   0%,
-  95%,
+  94%,
   100% {
-    transform: none;
+    transform: scaleY(0);
   }
   97% {
-    transform: scaleY(0.1);
+    transform: scaleY(1);
   }
 }
 

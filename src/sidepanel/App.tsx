@@ -3,67 +3,68 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { ServiceStatus, TabState } from "../core/messages.ts";
 import { saveApiKey, updateSettings, type Settings as SettingsData } from "../core/settings.ts";
 import { ICONS, Icon, Switch } from "./controls.tsx";
+import { Den } from "./Den.tsx";
 import { HiddenList } from "./HiddenList.tsx";
-import { useActiveTab, useApiKey, useSettings, useStatus, useTicker } from "./hooks.ts";
-import markUrl from "./mark.svg";
+import {
+  useActiveTab,
+  useApiKey,
+  useSettings,
+  useSiteTheme,
+  useStatus,
+  useTicker,
+} from "./hooks.ts";
+import { Lurker } from "./Lurker.tsx";
 import { Settings } from "./Settings.tsx";
 import { Setup } from "./Setup.tsx";
-import { Peek, Summary } from "./Summary.tsx";
+import { Summary } from "./Summary.tsx";
 
 export function App() {
   const settings = useSettings();
   const apiKey = useApiKey();
+  useSiteTheme();
   if (!settings || apiKey === undefined) return null;
   if (!apiKey) return <Setup />;
   return <Main settings={settings} apiKey={apiKey} />;
 }
 
+type View = "tab" | "settings";
+
 function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) {
   const status = useStatus();
   const tab = useActiveTab();
-  const [view, setView] = useState<"tab" | "settings">("tab");
+  const [view, setView] = useState<View>("tab");
   const state = settings.enabled ? tab?.state : undefined;
 
-  // Switching views lands keyboard focus on the button that switches back.
-  const mounted = useRef(false);
+  // Settings slides in from the right, and the tab view comes back from the left. Switching
+  // also lands keyboard focus on the button that switches back.
+  const switched = useRef(false);
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
+    if (!switched.current) return;
     window.scrollTo(0, 0);
     document.querySelector<HTMLElement>(".top .icon-button")?.focus();
   }, [view]);
+  const go = (next: View) => {
+    switched.current = true;
+    setView(next);
+  };
+  const from = switched.current ? (view === "settings" ? "right" : "left") : undefined;
 
-  if (view === "settings") {
-    return (
-      <>
-        <header class="top">
-          <button
-            type="button"
-            class="icon-button"
-            aria-label="Back"
-            onClick={() => setView("tab")}
-          >
-            <Icon d={ICONS.back} />
-          </button>
-          <h1>Settings</h1>
-        </header>
-        <Settings settings={settings} apiKey={apiKey} hidden={state?.hidden} />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <header class="top">
-        <img src={markUrl} alt="" width="24" height="24" />
-        <h1>Slop Goblin</h1>
+  const header =
+    view === "settings" ? (
+      <div class="top-row" key="settings">
+        <button type="button" class="icon-button" aria-label="Back" onClick={() => go("tab")}>
+          <Icon d={ICONS.back} />
+        </button>
+        <h1 class="top-title">Settings</h1>
+      </div>
+    ) : (
+      <div class="top-row" key="tab">
+        <h1 class="wordmark">Slop Goblin</h1>
         <button
           type="button"
           class="icon-button"
           aria-label="Settings"
-          onClick={() => setView("settings")}
+          onClick={() => go("settings")}
         >
           <Icon d={ICONS.settings} />
         </button>
@@ -72,14 +73,25 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
           checked={settings.enabled}
           onChange={(enabled) => updateSettings(() => ({ enabled }))}
         />
-      </header>
-      <Notice status={status} state={tab?.state} enabled={settings.enabled} />
-      <Summary tab={tab} settings={settings} />
-      {settings.enabled && <Peek settings={settings} />}
-      {state && tab && state.hidden.length > 0 && (
-        <HiddenList key={tab.id} tabId={tab.id} hidden={state.hidden} />
-      )}
-    </>
+      </div>
+    );
+
+  return (
+    <Den header={header} goblin={<Lurker awake={settings.enabled} fed={state?.hidden.length} />}>
+      <div class="sheet-body" key={view} data-from={from}>
+        {view === "settings" ? (
+          <Settings settings={settings} apiKey={apiKey} hidden={state?.hidden} />
+        ) : (
+          <>
+            <Notice status={status} state={tab?.state} enabled={settings.enabled} />
+            <Summary tab={tab} settings={settings} />
+            {state && tab && state.hidden.length > 0 && (
+              <HiddenList key={tab.id} tabId={tab.id} hidden={state.hidden} peek={settings.peek} />
+            )}
+          </>
+        )}
+      </div>
+    </Den>
   );
 }
 
@@ -121,7 +133,7 @@ function noticeFor(
       body: status.message,
       error: true,
       action: (
-        <button type="button" class="button" onClick={() => void saveApiKey(null)}>
+        <button type="button" class="button small" onClick={() => void saveApiKey(null)}>
           Replace key
         </button>
       ),

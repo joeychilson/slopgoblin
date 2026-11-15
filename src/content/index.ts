@@ -1,3 +1,4 @@
+import { THEME_KEY, type SiteTheme } from "../core/messages.ts";
 import { loadSettings } from "../core/settings.ts";
 import type { SiteAdapter } from "../sites/site.ts";
 import { x } from "../sites/x.ts";
@@ -19,13 +20,16 @@ new MutationObserver(syncTheme).observe(document.body, {
 
 if (site) void loadSettings().then((settings) => startFeed(site, settings));
 
-/** Matches our in-feed UI to the site's light, dim or dark background. */
+/** Matches our in-feed UI, and the side panel, to the site's light, dim or dark background. */
 function syncTheme() {
   const [r = 255, g = 255, b = 255, a = 1] =
     getComputedStyle(document.body)
       .backgroundColor.match(/[\d.]+/g)
       ?.map(Number) ?? [];
   const sum = r + g + b;
-  document.documentElement.dataset.sgTheme =
-    a === 0 || sum > 384 ? "light" : sum > 30 ? "dim" : "dark";
+  const theme: SiteTheme = a === 0 || sum > 384 ? "light" : sum > 30 ? "dim" : "dark";
+  if (document.documentElement.dataset.sgTheme === theme) return;
+  document.documentElement.dataset.sgTheme = theme;
+  // Unreachable once the extension is reloaded; the next page load catches up.
+  if (chrome.runtime?.id) void chrome.storage.local.set({ [THEME_KEY]: theme }).catch(() => {});
 }

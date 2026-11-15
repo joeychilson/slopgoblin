@@ -24,6 +24,9 @@ export interface HiddenPost {
   id: string;
   url: string;
   handle: string;
+  name: string;
+  /** Left out for NSFW posts, and until the site has loaded it. */
+  avatar?: string;
   text: string;
   category: CategoryId;
   score: number;
@@ -59,3 +62,8 @@ export interface Usage {
 }
 
 export const USAGE_KEY = "usage";
+
+/** The site's light, dim or dark background, last seen. The side panel matches it. */
+export type SiteTheme = "light" | "dim" | "dark";
+
+export const THEME_KEY = "siteTheme";

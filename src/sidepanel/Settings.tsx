@@ -1,89 +1,101 @@
 import { USD_PER_MILLION_TOKENS } from "../core/decisions.ts";
+import { GOBLIN_GLYPH } from "../core/goblin.ts";
 import type { HiddenPost, Usage } from "../core/messages.ts";
 import { saveApiKey, updateSettings, type Settings as SettingsData } from "../core/settings.ts";
 import { CATEGORIES } from "../core/taxonomy.ts";
-import { Switch } from "./controls.tsx";
+import { ICONS, Icon, Segments, Switch } from "./controls.tsx";
 import { useUsage } from "./hooks.ts";
+
+type HideMode = SettingsData["hideMode"];
+
+const HIDE_MODES: Record<HideMode, { label: string; hint: string }> = {
+  collapse: {
+    label: "Slim bar",
+    hint: "Leaves a slim bar that says why. Click it to see the post.",
+  },
+  remove: {
+    label: "Remove",
+    hint: "Takes the post out completely. It’s only listed in this panel.",
+  },
+};
 
 export function Settings(props: { settings: SettingsData; apiKey: string; hidden?: HiddenPost[] }) {
   const { settings, apiKey } = props;
   const usage = useUsage();
-  const set = (patch: Partial<SettingsData>) => void updateSettings(() => patch);
 
   return (
     <div class="settings">
       <section aria-labelledby="what-title">
-        <h2 id="what-title">What to hide</h2>
-        <ul>
+        <h2 id="what-title" class="section-title">
+          What to hide
+        </h2>
+        <ul class="rows">
           {CATEGORIES.map((category) => {
             const on = settings.categories[category.id];
             const here = props.hidden?.filter((p) => p.category === category.id).length;
+            const id = `category-${category.id}`;
             return (
-              <li class="row">
-                <span class="row-text">
-                  <strong>{category.label}</strong>
-                  <span class="row-desc">{category.blurb}</span>
-                </span>
-                {on && here ? <span class="row-count">{here} here</span> : null}
-                <Switch
-                  label={category.label}
-                  checked={on}
-                  onChange={(next) =>
-                    void updateSettings((s) => ({
-                      categories: { ...s.categories, [category.id]: next },
-                    }))
-                  }
-                />
+              <li key={category.id}>
+                <label class={on ? "row" : "row is-off"} for={id}>
+                  <span class="row-text">
+                    <span class="row-title">{category.label}</span>
+                    <span class="row-desc">{category.blurb}</span>
+                  </span>
+                  {on && here ? <span class="row-count">{here} here</span> : null}
+                  <Switch
+                    id={id}
+                    label={category.label}
+                    checked={on}
+                    onChange={(next) =>
+                      void updateSettings((s) => ({
+                        categories: { ...s.categories, [category.id]: next },
+                      }))
+                    }
+                  />
+                </label>
               </li>
             );
           })}
         </ul>
       </section>
 
-      <section role="radiogroup" aria-labelledby="mode-title">
-        <h2 id="mode-title">When a post is hidden</h2>
-        <label class="row is-radio">
-          <input
-            type="radio"
-            name="hide-mode"
-            checked={settings.hideMode === "collapse"}
-            onChange={() => set({ hideMode: "collapse" })}
-          />
-          <span class="row-text">
-            <strong>Leave a slim bar</strong>
-            <span class="row-desc">Says why. Click it to see the post.</span>
-          </span>
-        </label>
-        <label class="row is-radio">
-          <input
-            type="radio"
-            name="hide-mode"
-            checked={settings.hideMode === "remove"}
-            onChange={() => set({ hideMode: "remove" })}
-          />
-          <span class="row-text">
-            <strong>Remove it completely</strong>
-            <span class="row-desc">It’s only listed in this panel.</span>
-          </span>
-        </label>
+      <section aria-labelledby="mode-title">
+        <h2 id="mode-title" class="section-title">
+          When a post is hidden
+        </h2>
+        <FeedSketch mode={settings.hideMode} />
+        <Segments<HideMode>
+          name="hide-mode"
+          label="When a post is hidden"
+          value={settings.hideMode}
+          options={(Object.keys(HIDE_MODES) as HideMode[]).map((mode) => ({
+            value: mode,
+            label: HIDE_MODES[mode].label,
+          }))}
+          onChange={(hideMode) => void updateSettings(() => ({ hideMode }))}
+        />
+        <p class="hint" key={settings.hideMode}>
+          {HIDE_MODES[settings.hideMode].hint}
+        </p>
       </section>
 
       <section aria-labelledby="trusted-title">
-        <h2 id="trusted-title">Always show</h2>
+        <h2 id="trusted-title" class="section-title">
+          Always show
+        </h2>
         {settings.trusted.length ? (
-          <ul>
+          <ul class="chips">
             {settings.trusted.map((handle) => (
-              <li class="row">
-                <span class="row-text">@{handle}</span>
+              <li key={handle} class="chip">
+                @{handle}
                 <button
                   type="button"
-                  class="link"
                   aria-label={`Stop always showing @${handle}`}
                   onClick={() =>
                     void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }))
                   }
                 >
-                  Remove
+                  <Icon d={ICONS.close} size={14} weight={2.2} />
                 </button>
               </li>
             ))}
@@ -97,12 +109,14 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
       </section>
 
       <section aria-labelledby="key-title">
-        <h2 id="key-title">Gemini API key</h2>
-        <div class="row">
-          <span class="row-text">
+        <h2 id="key-title" class="section-title">
+          Gemini API key
+        </h2>
+        <div class="key">
+          <span>
             Key ending in <code>{apiKey.slice(-4)}</code>
           </span>
-          <button type="button" class="link" onClick={() => void saveApiKey(null)}>
+          <button type="button" class="button small" onClick={() => void saveApiKey(null)}>
             Replace
           </button>
         </div>
@@ -112,6 +126,21 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
           kept on this device for 30 days, so a post is only sent once.
         </p>
       </section>
+    </div>
+  );
+}
+
+/** Three posts in a feed; the middle one is hidden, and folds away entirely on Remove. */
+function FeedSketch({ mode }: { mode: HideMode }) {
+  return (
+    <div class="sketch" data-mode={mode} aria-hidden="true">
+      <i class="sketch-post" />
+      <i class="sketch-bar">
+        <svg viewBox={GOBLIN_GLYPH.viewBox}>
+          <path d={GOBLIN_GLYPH.d} />
+        </svg>
+      </i>
+      <i class="sketch-post" />
     </div>
   );
 }

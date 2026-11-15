@@ -24,6 +24,8 @@ interface Tracked {
   letThrough?: "not-slop" | "trust";
   verdict: Verdict | null;
   hiddenAt: number;
+  /** Picked up for the side panel's list, which can outlive the post's element. */
+  avatar?: string;
 }
 
 /** Watches the page for posts, gets them judged, and keeps their elements in sync with the verdicts. */
@@ -287,20 +289,25 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       pending: all.filter((t) => t.status === "pending").length,
       hidden: all
         .sort((a, b) => b.hiddenAt - a.hiddenAt)
-        .flatMap(({ post, verdict }) =>
-          verdict
-            ? [
-                {
-                  id: post.id,
-                  url: post.url,
-                  handle: post.author.handle,
-                  text: post.text.slice(0, 600),
-                  category: verdict.category,
-                  score: verdict.score,
-                },
-              ]
-            : [],
-        ),
+        .flatMap((t) => {
+          const { post, verdict } = t;
+          if (!verdict) return [];
+          const el = t.avatar ? undefined : elementsOf(t)[0];
+          if (el) t.avatar = site.avatar(el);
+          return [
+            {
+              id: post.id,
+              url: post.url,
+              handle: post.author.handle,
+              name: post.author.name,
+              // A porn bot's avatar is as explicit as its post.
+              avatar: verdict.category === "nsfw" ? undefined : t.avatar,
+              text: post.text.slice(0, 600),
+              category: verdict.category,
+              score: verdict.score,
+            },
+          ];
+        }),
       hiddenAt: Object.fromEntries(
         STRICTNESS.map((s) => [s, judged.filter((t) => verdictAt(t, s)).length]),
       ) as Record<Strictness, number>,

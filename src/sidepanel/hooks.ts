@@ -1,9 +1,11 @@
 import { useEffect, useState } from "preact/hooks";
 import {
   STATUS_KEY,
+  THEME_KEY,
   USAGE_KEY,
   type RuntimeMessage,
   type ServiceStatus,
+  type SiteTheme,
   type TabMessage,
   type TabState,
   type Usage,
@@ -58,6 +60,20 @@ export function useUsage() {
     return watchStorage<Usage>("local", USAGE_KEY, show);
   }, []);
   return usage;
+}
+
+/** Dresses the panel in the same light, dim or dark as the site, once a page has said which. */
+export function useSiteTheme() {
+  useEffect(() => {
+    const apply = (theme: SiteTheme | undefined) => {
+      if (theme) document.documentElement.dataset.theme = theme;
+      else delete document.documentElement.dataset.theme;
+    };
+    void chrome.storage.local
+      .get(THEME_KEY)
+      .then((stored) => apply(stored[THEME_KEY] as SiteTheme | undefined));
+    return watchStorage<SiteTheme>("local", THEME_KEY, apply);
+  }, []);
 }
 
 export interface ActiveTab {

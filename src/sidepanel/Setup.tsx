@@ -1,12 +1,15 @@
 import { useState } from "preact/hooks";
 import { DecisionError, decide } from "../core/decisions.ts";
 import { saveApiKey } from "../core/settings.ts";
-import markUrl from "./mark.svg";
+import { Den } from "./Den.tsx";
+import { Lurker } from "./Lurker.tsx";
 
 export function Setup() {
   const [key, setKey] = useState("");
   const [error, setError] = useState<string>();
   const [checking, setChecking] = useState(false);
+  // The goblin looks away while a key is typed in.
+  const [typing, setTyping] = useState(false);
 
   async function connect(event: Event) {
     event.preventDefault();
@@ -26,44 +29,53 @@ export function Setup() {
   }
 
   return (
-    <main class="setup">
-      <img class="setup-mark" src={markUrl} alt="" width="72" height="72" />
-      <h1>Slop Goblin</h1>
-      <p class="lede">Hides AI slop, ragebait, clickbait and other junk from your X feed.</p>
+    <Den
+      header={
+        <div class="top-row">
+          <h1 class="wordmark">Slop Goblin</h1>
+        </div>
+      }
+      goblin={<Lurker awake shy={typing} />}
+    >
+      <div class="sheet-body setup">
+        <p class="lede">Hides AI slop, ragebait, clickbait and other junk from your X feed.</p>
 
-      <form onSubmit={connect}>
-        <label for="key">Gemini API key</label>
-        <input
-          id="key"
-          type="password"
-          autocomplete="off"
-          spellcheck={false}
-          placeholder="Paste your key"
-          value={key}
-          onInput={(e) => setKey(e.currentTarget.value)}
-        />
-        {error && (
-          <p class="error" role="alert">
-            {error}
-          </p>
-        )}
-        <button class="button primary wide" disabled={!key.trim() || checking}>
-          {checking ? "Checking key…" : "Connect"}
-        </button>
-      </form>
+        <form onSubmit={connect}>
+          <label for="key">Gemini API key</label>
+          <input
+            id="key"
+            type="password"
+            autocomplete="off"
+            spellcheck={false}
+            placeholder="Paste your key"
+            value={key}
+            onInput={(e) => setKey(e.currentTarget.value)}
+            onFocus={() => setTyping(true)}
+            onBlur={() => setTyping(false)}
+          />
+          {error && (
+            <p class="error" role="alert">
+              {error}
+            </p>
+          )}
+          <button class="button primary wide" disabled={!key.trim() || checking}>
+            {checking ? "Checking key…" : "Connect"}
+          </button>
+        </form>
 
-      <p class="hint">
-        Get a key from{" "}
-        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
-          Google AI Studio
-        </a>
-        . A free one works; a paid one costs about 8¢ per 1,000 posts checked.
-      </p>
-      <p class="hint">
-        Posts you scroll past are sent to Google’s Gemini Decisions API to be judged. Your key and
-        the answers stay in this browser.
-      </p>
-    </main>
+        <p class="hint">
+          Get a key from{" "}
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+            Google AI Studio
+          </a>
+          . A free one works; a paid one costs about 8¢ per 1,000 posts checked.
+        </p>
+        <p class="hint">
+          Posts you scroll past are sent to Google’s Gemini Decisions API to be judged. Your key and
+          the answers stay in this browser.
+        </p>
+      </div>
+    </Den>
   );
 }
 

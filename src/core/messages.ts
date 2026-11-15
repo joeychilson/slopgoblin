@@ -4,8 +4,7 @@ import type { CategoryId, Strictness } from "./taxonomy.ts";
 
 /** Sent by content scripts; `tab-state` is a broadcast the side panel also listens to. */
 export type RuntimeMessage =
-  /** Only the categories switched on are asked about. */
-  | { type: "classify"; post: Post; categories: CategoryId[]; cachedOnly: boolean }
+  | { type: "classify"; post: Post; cachedOnly: boolean }
   | { type: "not-slop"; id: string; notSlop: boolean }
   | { type: "tab-state"; state: TabState };
 
@@ -37,8 +36,6 @@ export interface TabState {
   hidden: HiddenPost[];
   /** How many posts each strictness would hide, so the panel can show what switching does. */
   hiddenAt: Record<Strictness, number>;
-  /** Every judged post except ads: its highest score among the categories switched on. */
-  scored: { score: number; hidden: boolean }[];
   /** Posts are on the page but can't be read: the site's markup probably changed. */
   broken: boolean;
 }
@@ -52,3 +49,13 @@ export type ServiceStatus =
   | { kind: "error"; message: string };
 
 export const STATUS_KEY = "status";
+
+/** What this month's checking has used, kept in `chrome.storage.local`. */
+export interface Usage {
+  /** "2026-11". */
+  month: string;
+  posts: number;
+  tokens: number;
+}
+
+export const USAGE_KEY = "usage";

@@ -75,7 +75,7 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
       </header>
       <Notice status={status} state={tab?.state} enabled={settings.enabled} />
       <Summary tab={tab} settings={settings} />
-      <Peek settings={settings} />
+      {settings.enabled && <Peek settings={settings} />}
       {state && tab && state.hidden.length > 0 && (
         <HiddenList key={tab.id} tabId={tab.id} hidden={state.hidden} />
       )}

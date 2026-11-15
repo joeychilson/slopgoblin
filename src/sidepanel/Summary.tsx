@@ -1,11 +1,9 @@
 import { useEffect, useState } from "preact/hooks";
 import type { TabState } from "../core/messages.ts";
 import { updateSettings, type Settings } from "../core/settings.ts";
-import { STRICTNESS, THRESHOLD, type Strictness } from "../core/taxonomy.ts";
+import { STRICTNESS, TRADEOFF, type Strictness } from "../core/taxonomy.ts";
 import { Switch } from "./controls.tsx";
 import type { ActiveTab } from "./hooks.ts";
-
-const BINS = 20;
 
 /** What the goblin is doing in this tab, and a strictness control that shows what switching would do. */
 export function Summary({ tab, settings }: { tab?: ActiveTab; settings: Settings }) {
@@ -22,10 +20,10 @@ export function Summary({ tab, settings }: { tab?: ActiveTab; settings: Settings
       ) : (
         <StartHere tab={tab} />
       )}
-      {state && state.scored.length > 0 && (
-        <ScoreChart scored={state.scored} threshold={THRESHOLD[settings.strictness]} />
-      )}
-      <StrictnessPicker value={settings.strictness} counts={state?.hiddenAt} />
+      <StrictnessPicker
+        value={settings.strictness}
+        counts={state?.checked ? state.hiddenAt : undefined}
+      />
     </section>
   );
 }
@@ -71,49 +69,6 @@ function StartHere({ tab }: { tab?: ActiveTab }) {
   );
 }
 
-/** Posts by how sure the goblin is that they're slop, with the current strictness as a line. */
-function ScoreChart({ scored, threshold }: { scored: TabState["scored"]; threshold: number }) {
-  const bins = Array.from({ length: BINS }, () => ({ hidden: 0, kept: 0 }));
-  for (const { score, hidden } of scored) {
-    bins[Math.min(BINS - 1, Math.floor(score * BINS))]![hidden ? "hidden" : "kept"]++;
-  }
-  // Square root, so a handful of slop still shows up next to hundreds of clean posts.
-  const scale = Math.sqrt(Math.max(...bins.map((b) => b.hidden + b.kept)));
-  const percent = Math.round(threshold * 100);
-  const above = scored.filter((s) => s.score >= threshold).length;
-
-  return (
-    <div
-      class="chart"
-      role="img"
-      aria-label={`${above} of ${plural(scored.length, "post")} score ${percent}% or higher.`}
-    >
-      <div class="bars">
-        {bins.map(({ hidden, kept }, i) => (
-          <div
-            class="bin"
-            title={`${i * 5}–${i * 5 + 5}% sure: ${plural(hidden + kept, "post")}`}
-            style={{
-              height: hidden + kept ? `max(2px, ${(Math.sqrt(hidden + kept) / scale) * 100}%)` : 0,
-            }}
-          >
-            {hidden > 0 && <span class="is-hidden" style={{ flexGrow: hidden }} />}
-            {kept > 0 && <span style={{ flexGrow: kept }} />}
-          </div>
-        ))}
-        {/* Bins are 5% wide with 2px gaps, so the line sits in the gap at the threshold. */}
-        <span class="cut" style={{ left: `calc((100% + 2px) * ${threshold} - 1.5px)` }}>
-          <span>{percent}%</span>
-        </span>
-      </div>
-      <div class="axis">
-        <span>Clean</span>
-        <span>Slop</span>
-      </div>
-    </div>
-  );
-}
-
 function StrictnessPicker(props: { value: Strictness; counts?: Record<Strictness, number> }) {
   return (
     <>
@@ -131,10 +86,7 @@ function StrictnessPicker(props: { value: Strictness; counts?: Record<Strictness
           </label>
         ))}
       </div>
-      <p class="hint">
-        Hides posts the goblin is at least {Math.round(THRESHOLD[props.value] * 100)}% sure about.
-        {props.value === "strict" && " Expect a few mistakes."}
-      </p>
+      <p class="hint">{TRADEOFF[props.value]}</p>
     </>
   );
 }

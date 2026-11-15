@@ -3,7 +3,7 @@ import type { ClassifyResponse, RuntimeMessage, TabMessage, TabState } from "../
 import { judge, type Verdict } from "../core/policy.ts";
 import type { Post } from "../core/post.ts";
 import { updateSettings, watchSettings, type Settings } from "../core/settings.ts";
-import { CATEGORIES, STRICTNESS, type CategoryId, type Strictness } from "../core/taxonomy.ts";
+import { CATEGORIES, STRICTNESS, type Strictness } from "../core/taxonomy.ts";
 import type { SiteAdapter } from "../sites/site.ts";
 import { renderCell, type BarAction, type View } from "./bar.ts";
 
@@ -18,8 +18,6 @@ interface Tracked {
   /** "idle" while filtering is switched off: nothing is sent until it's back on. */
   status: "idle" | "pending" | "done" | "failed";
   scores: Scores;
-  /** The categories `scores` covers. Switching another one on asks about it too. */
-  askedFor: CategoryId[];
   notSlop: boolean;
   revealed: boolean;
   /** Set when the reader lets the post through from its bar, which then confirms it. */
@@ -58,6 +56,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       }
       readable++;
       if (post.author.handle.toLowerCase() === site.viewer()?.toLowerCase()) continue;
+      if (site.isFocused(el)) continue;
       el.setAttribute(ID_ATTR, post.id);
       const t = posts.get(post.id) ?? track(post);
       if (wantsRequest(t)) void request(t);
@@ -78,7 +77,6 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       post,
       status: post.isAd ? "done" : "idle",
       scores: {},
-      askedFor: [],
       notSlop: false,
       revealed: false,
       verdict: null,
@@ -101,43 +99,37 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     changed();
   }
 
+  /** Nothing is sent for posts no setting could hide: that's the cheapest request there is. */
   function wantsRequest(t: Tracked) {
-    if (!settings.enabled || t.post.isAd) return false;
-    if (t.status === "idle" || t.status === "failed") return true;
-    return t.status === "done" && switchedOn().some((id) => !t.askedFor.includes(id));
-  }
-
-  function switchedOn() {
-    return CATEGORIES.map((c) => c.id).filter((id) => settings.categories[id]);
+    if (t.status !== "idle" && t.status !== "failed") return false;
+    if (!settings.enabled || t.post.isAd || settings.trusted.includes(handleOf(t))) return false;
+    return CATEGORIES.some((c) => "describes" in c && settings.categories[c.id]);
   }
 
   async function request(t: Tracked) {
-    const categories = switchedOn();
     t.status = "pending";
     changed();
     // Cached scores come back straight away. A post that still needs judging gets a moment to
     // finish rendering first, then is read again.
-    let res = await classify(t.post, categories, true);
+    let res = await classify(t.post, true);
     if ("uncached" in res) {
       await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
-      if (!settings.enabled) {
+      const el = elementsOf(t)[0];
+      // Scrolled past and unmounted already, or switched off: it's judged if it comes back.
+      if (!el || !settings.enabled) {
         t.status = "idle";
         changed();
         return;
       }
-      const el = elementsOf(t)[0];
-      t.post = (el && site.readPost(el)) || t.post;
-      res = await classify(t.post, categories, false);
+      t.post = site.readPost(el) ?? t.post;
+      res = await classify(t.post, false);
     }
 
     if ("scores" in res) {
       t.status = "done";
       t.scores = res.scores;
-      t.askedFor = categories;
       t.notSlop ||= res.notSlop;
       update(t, false);
-      // A category switched on while this was in flight still needs asking about.
-      if (wantsRequest(t) && elementsOf(t).length) void request(t);
     } else {
       t.status = "failed";
       setTimeout(() => {
@@ -147,12 +139,8 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     changed();
   }
 
-  async function classify(
-    post: Post,
-    categories: CategoryId[],
-    cachedOnly: boolean,
-  ): Promise<ClassifyResponse> {
-    const res = await send<ClassifyResponse>({ type: "classify", post, categories, cachedOnly });
+  async function classify(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
+    const res = await send<ClassifyResponse>({ type: "classify", post, cachedOnly });
     return res ?? { unavailable: true };
   }
 
@@ -167,11 +155,6 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       { scores: t.scores, isAd: t.post.isAd, handle: t.post.author.handle, notSlop: t.notSlop },
       { ...settings, strictness },
     );
-  }
-
-  function topScore(t: Tracked) {
-    const scores = switchedOn().flatMap((id) => t.scores[id] ?? []);
-    return scores.length ? Math.max(...scores) : undefined;
   }
 
   function update(t: Tracked, fresh: boolean) {
@@ -315,10 +298,6 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       hiddenAt: Object.fromEntries(
         STRICTNESS.map((s) => [s, judged.filter((t) => verdictAt(t, s)).length]),
       ) as Record<Strictness, number>,
-      scored: judged.flatMap((t) => {
-        const score = topScore(t);
-        return score === undefined ? [] : [{ score, hidden: Boolean(t.verdict) }];
-      }),
       broken: unreadable >= 5 && unreadable > readable,
     };
   }

@@ -1,21 +1,20 @@
-/* Sage paper with one goblin green: the only color is the one that means "hidden". */
+/* Moss on paper. Green is the only color, and it means the goblin: switched on, or hiding. */
 :root {
   color-scheme: light dark;
   --paper: light-dark(#f6f7f2, #1a1e18);
-  --raised: light-dark(#ffffff, #232920);
-  --sunken: light-dark(#e8ece0, #13160f);
+  --field: light-dark(#ffffff, #262c22);
+  --sunken: light-dark(#e8ece0, #121510);
   --ink: light-dark(#1c2117, #e7ebe0);
   --muted: light-dark(#5c6653, #9aa38f);
-  --line: light-dark(#e1e6d8, #30382b);
-  --rule: light-dark(#eef1e8, #2a3126);
+  --line: light-dark(#d3d9c7, #394233);
   --track: light-dark(#7d876e, #66705b);
-  --bar: light-dark(#aab39b, #4b5543);
   --knob: light-dark(#ffffff, #e7ebe0);
   --goblin: light-dark(#4f731a, #a4c35b);
   --on-goblin: light-dark(#ffffff, #18200f);
   --danger: light-dark(#b42318, #f0837a);
   --display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
   --body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --gutter: 16px;
 }
 
 * {
@@ -27,7 +26,7 @@ body {
   min-width: 280px;
   background: var(--paper);
   color: var(--ink);
-  font: 13px/1.4 var(--body);
+  font: 13px/18px var(--body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -48,12 +47,19 @@ a {
 
 h1,
 h2,
-p {
+p,
+ul {
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 strong {
   font-weight: 600;
+}
+
+h2 {
+  font: 600 15px/20px var(--display);
 }
 
 /* Header */
@@ -63,7 +69,7 @@ strong {
   align-items: center;
   gap: 8px;
   height: 52px;
-  padding: 0 12px 0 16px;
+  padding: 0 12px 0 var(--gutter);
 }
 
 .top h1 {
@@ -74,6 +80,10 @@ strong {
 
 .top .icon-button:first-child {
   margin-left: -8px;
+}
+
+.top .switch {
+  margin-left: 4px;
 }
 
 .icon-button {
@@ -135,10 +145,6 @@ strong {
   transform: translateX(14px);
 }
 
-.top .switch {
-  margin-left: 4px;
-}
-
 .button {
   display: inline-flex;
   align-items: center;
@@ -146,11 +152,10 @@ strong {
   padding: 6px 11px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: var(--raised);
+  background: var(--field);
   color: var(--ink);
   font-size: 12px;
   font-weight: 600;
-  text-decoration: none;
   cursor: pointer;
 }
 
@@ -181,8 +186,7 @@ strong {
 }
 
 .link {
-  height: 28px;
-  padding: 0;
+  padding: 5px 0;
   border: 0;
   background: none;
   font-size: 12px;
@@ -208,11 +212,16 @@ kbd {
 }
 
 .hint,
-.fineprint {
-  margin-top: 8px;
+.row-desc,
+.row-count {
   color: var(--muted);
   font-size: 12px;
   line-height: 16px;
+}
+
+.hint {
+  margin-top: 8px;
+  text-wrap: pretty;
 }
 
 .row-text {
@@ -222,9 +231,6 @@ kbd {
 
 .row-desc {
   display: block;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 16px;
 }
 
 /* Notices */
@@ -233,7 +239,7 @@ kbd {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin: 0 16px 12px;
+  margin: 0 var(--gutter) 12px;
   padding: 10px 12px;
   border-radius: 8px;
   background: var(--sunken);
@@ -252,15 +258,15 @@ kbd {
   display: block;
 }
 
-/* This tab: tally, chart and strictness */
+/* This tab: tally and strictness */
 
 .summary {
-  padding: 4px 16px 16px;
+  padding: 8px var(--gutter) 0;
 }
 
 .headline {
-  font: 600 20px/26px var(--display);
-  letter-spacing: -0.01em;
+  font: 600 24px/28px var(--display);
+  letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
   text-wrap: balance;
 }
@@ -272,75 +278,14 @@ kbd {
 }
 
 .summary > .button {
-  margin-top: 12px;
-}
-
-.chart {
-  margin-top: 14px;
-}
-
-.bars {
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 64px;
-  padding-top: 16px;
-  border-bottom: 1px solid var(--bar);
-}
-
-.bin {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column-reverse;
-  gap: 1px;
-}
-
-.bin span {
-  flex-basis: 0;
-  background: var(--bar);
-}
-
-.bin span.is-hidden {
-  background: var(--goblin);
-}
-
-.bin span:last-child {
-  border-radius: 3px 3px 0 0;
-}
-
-.cut {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--ink);
-}
-
-.cut span {
-  position: absolute;
-  top: 0;
-  left: 5px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 14px;
+  margin-top: 10px;
 }
 
 .levels {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
-  margin-top: 14px;
+  margin-top: 16px;
   padding: 4px;
   border-radius: 10px;
   background: var(--sunken);
@@ -363,7 +308,7 @@ kbd {
 }
 
 .levels label:has(:checked) {
-  background: var(--raised);
+  background: var(--field);
 }
 
 .levels label:has(:focus-visible) {
@@ -380,6 +325,7 @@ kbd {
   display: block;
   color: var(--muted);
   font-size: 12px;
+  line-height: 16px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -387,112 +333,45 @@ kbd {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 11px 16px;
-  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding: 0 var(--gutter);
 }
 
 /* Hidden posts */
 
 .hidden {
-  padding-bottom: 24px;
-  border-top: 1px solid var(--line);
-}
-
-.hidden h2,
-.settings h2 {
-  font: 600 15px/20px var(--display);
-}
-
-.hidden h2 {
-  padding: 14px 16px 6px;
-}
-
-.groups,
-.posts,
-.box {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.group-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 40px;
-  padding: 0 16px;
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-
-.group-head:hover {
-  background: var(--sunken);
-}
-
-.group-label {
-  flex: 1;
-}
-
-.group-count {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.group-head .icon {
-  color: var(--muted);
-  transition: transform 150ms;
-}
-
-.group-head[aria-expanded="true"] .icon {
-  transform: rotate(90deg);
-}
-
-.posts,
-.box {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--raised);
-}
-
-.posts {
-  margin: 0 16px 8px;
+  margin-top: 28px;
+  padding: 0 var(--gutter) 32px;
 }
 
 .post {
-  padding: 10px 12px 4px;
-}
-
-.post + .post,
-.box > * + * {
-  border-top: 1px solid var(--rule);
+  margin-top: 14px;
 }
 
 .post-head {
   display: flex;
-  justify-content: space-between;
   gap: 12px;
+  color: var(--muted);
 }
 
-.post-who {
+.post-what {
+  flex: 1;
   overflow: hidden;
-  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.post-what strong {
+  color: var(--ink);
+}
+
 .post-score {
-  flex: none;
-  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
 .post-text {
   display: -webkit-box;
   width: 100%;
-  margin-top: 2px;
   padding: 0;
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -516,39 +395,30 @@ kbd {
 .post-actions {
   display: flex;
   gap: 16px;
-  margin-top: 2px;
 }
 
 /* Settings */
 
 .settings {
-  padding: 4px 16px 32px;
+  padding: 4px var(--gutter) 32px;
 }
 
 .settings section + section {
-  margin-top: 22px;
+  margin-top: 28px;
 }
 
 .settings h2 {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 12px;
+  padding: 7px 0;
 }
 
-.row-title {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.row-title span {
-  color: var(--muted);
-  font-size: 12px;
+.row-count {
   font-variant-numeric: tabular-nums;
 }
 
@@ -558,12 +428,12 @@ kbd {
 }
 
 .row.is-radio input {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
   accent-color: var(--goblin);
 }
 
 .row .link {
-  margin: -4px 0;
+  margin: -5px 0;
 }
 
 code {
@@ -601,6 +471,7 @@ code {
 .lede {
   margin-bottom: 28px;
   font-size: 15px;
+  line-height: 21px;
   text-wrap: pretty;
 }
 
@@ -616,7 +487,7 @@ code {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--raised);
+  background: var(--field);
 }
 
 .setup input:focus {
@@ -630,7 +501,7 @@ code {
   color: var(--danger);
 }
 
-.setup .hint {
+.setup form + .hint {
   margin-top: 16px;
 }
 

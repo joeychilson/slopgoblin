@@ -3,7 +3,9 @@ import type { Settings } from "./settings.ts";
 import { CATEGORIES, THRESHOLD, type CategoryId } from "./taxonomy.ts";
 
 export interface Verdict {
+  /** The likeliest of the categories switched on. */
   category: CategoryId;
+  /** The probability the post is in any category switched on. */
   score: number;
 }
 
@@ -23,13 +25,13 @@ export function judge(
   if (!settings.enabled || notSlop || settings.trusted.includes(handle.toLowerCase())) return null;
   if (isAd && settings.categories.ad) return { category: "ad", score: 1 };
 
-  let verdict: Verdict | null = null;
+  let score = 0;
+  let top: { id: CategoryId; p: number } | undefined;
   for (const { id } of CATEGORIES) {
-    const score = scores[id];
-    if (score === undefined || !settings.categories[id]) continue;
-    if (score >= THRESHOLD[settings.strictness] && score > (verdict?.score ?? 0)) {
-      verdict = { category: id, score };
-    }
+    const p = scores[id];
+    if (p === undefined || !settings.categories[id]) continue;
+    score += p;
+    if (!top || p > top.p) top = { id, p };
   }
-  return verdict;
+  return top && score >= THRESHOLD[settings.strictness] ? { category: top.id, score } : null;
 }

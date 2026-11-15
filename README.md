@@ -1,8 +1,8 @@
 # Slop Goblin
 
-A Chrome extension that hides AI slop, ragebait, clickbait, engagement bait, reply spam, NSFW posts, grifts and ads from your X feed. Each post is judged by Google's [Gemini Decisions API](https://ai.google.dev/gemini-api/docs/decisions) with your own API key.
+A Chrome extension that hides AI slop, ragebait, clickbait, engagement bait, reply spam, NSFW posts, grifts and ads from your X feed. Each post is judged by Google's [Gemini Decisions API](https://aistudio.google.com/docs/decisions-api) with your own API key.
 
-Hidden posts collapse into a slim bar that says why. Click it to see the post. The side panel lists what's hidden in the current tab by category and shows how many posts each strictness would hide there. **Peek** (<kbd>Alt+Shift+P</kbd>) shows hidden posts in place with a label, so you can check the goblin's work.
+Hidden posts collapse into a slim bar that says why. Click it to see the post. The side panel lists what's hidden in the current tab and shows how many posts each strictness would hide there. **Peek** (<kbd>Alt+Shift+P</kbd>) shows hidden posts in place with a label, so you can check the goblin's work.
 
 ## Setup
 
@@ -33,34 +33,55 @@ content script (x.com)            service worker                    Gemini
         └── settings (chrome.storage.sync) ──► side panel (Preact)
 ```
 
-- **One request per post.** Every category you have on is a yes/no question asked in a single Decisions call. With all of them on, a text post is about 1,300 input tokens, so 10,000 posts cost about $1.30, and the free tier covers roughly 35 posts a minute. Each category you turn off saves 10–20%; turning it back on asks just that question about posts already checked.
-- **Scores are cached, verdicts aren't.** IndexedDB keeps the model's probability for each question for 30 days. Whether a post is hidden is decided locally by `core/policy.ts` from those scores and your settings, so changing strictness or categories applies instantly with no new requests.
-- **Rewording a question re-asks only that question.** Cache keys include a hash of the question's wording (`core/decisions.ts`), so edits to `core/taxonomy.ts` invalidate exactly the answers they affect.
-- **Ads are a rule, not a question.** X marks promoted posts in its markup.
+- **One multiple-choice question per post.** The model is asked which label fits best: one of the junk categories, or `fine`. It answers with a probability for every option. A post is hidden when the categories you have switched on add up to more than your strictness asks for (85%, 60% or 40%), and the bar names the likeliest one. Asking once, with `fine` spelled out as an option, is what keeps real posts in: separate yes/no questions per category each found something to object to in ordinary fan posts and replies.
+- **About 8¢ per 1,000 posts.** A text post is about 630 input tokens and each image adds 280 (up to two are sent, at low resolution), which averages 840 on a real feed. Output is free. The free tier's 50,000 tokens a minute covers about 60 posts a minute; when it runs out, the posts on screen are checked first once it's back. The side panel's settings show the month's running total.
+- **Nothing is sent that couldn't be hidden.** Not your own posts, not posts from accounts you've marked "Always show", not the post a page is about, not ads (X marks those itself), and not posts you scrolled past before they finished loading.
+- **Answers are cached, verdicts aren't.** IndexedDB keeps the probabilities for 30 days. Whether a post is hidden is decided locally by `core/policy.ts` from those and your settings, so changing strictness or categories applies instantly with no new requests.
+- **Rewording the question re-asks it.** Cached answers are stored under a hash of the question, its options and the input format (`core/decisions.ts`), so an edit to `core/taxonomy.ts` can't leave stale answers behind.
 - **Posts Google won't read count as NSFW.** Google's safety filters refuse some posts outright, and what they refuse is explicit or worse.
-- **Your own posts are left alone.** They're never sent or hidden.
 
 ## Tuning the filter
 
-The categories, their prompts and the score each strictness needs to hide a post live in `src/core/taxonomy.ts`. `eval/posts.jsonl` holds 303 labeled posts, including hard negatives (strong opinions, real breaking news, people sharing their own work, health, fitness and art) and prompt-injection attempts. To see how a prompt change performs:
+The question, the description of each option and the probability each strictness needs live in `src/core/taxonomy.ts`. The eval sends labeled posts through the same code the extension runs and reports, per strictness, how many real posts were hidden by mistake and how much junk was caught:
 
 ```sh
 echo "GEMINI_API_KEY=…" > .env.local
-vp run eval            # precision and recall per category and strictness
-vp run eval --misses   # also list the posts it gets wrong at "balanced"
+vp run eval                    # the tables
+vp run eval --misses           # also list every mistake at "balanced"
+vp run eval --misses strict    # …or at another strictness
 ```
 
-Answers are cached in `eval/.cache.json`, so reruns only pay for questions you changed. With the current prompts, no clean post is hidden at any strictness, and Relaxed, Balanced and Strict catch 87%, 96% and 99% of the slop.
+Answers are cached in `eval/.cache.json`, so a rerun only pays for posts whose question changed. The model is deterministic: the same request gets the same probabilities.
+
+There are two kinds of test post, in the same format (`eval/LABELING.md`):
+
+- `eval/posts.jsonl` has 303 written to order, among them hard negatives (strong opinions, real breaking news, people sharing their own work) and prompt-injection attempts.
+- `eval/real/*.jsonl` holds posts collected from a real timeline, reply threads and spam-prone searches, with their images. Those are other people's posts, so the folder is gitignored; put your own there. Real posts are what the wording should be tuned on. The written ones are easier than a real feed and flatter every design.
+
+With the current wording, on 674 real posts and the 303 written ones (850 with a firm label):
+
+|          | real posts hidden by mistake | junk caught      |
+| -------- | ---------------------------- | ---------------- |
+| Relaxed  | 0 of 595                     | 200 of 255 (78%) |
+| Balanced | 3 of 595 (0.5%)              | 243 of 255 (95%) |
+| Strict   | 16 of 595 (2.7%)             | 250 of 255 (98%) |
+
+Two things learned the hard way, before changing the wording:
+
+- The long descriptions earn their tokens. The examples inside `fine` (fans reacting to a team or artist, short replies that react to their parent) are what stopped real fan posts being read as clickbait. Terser options were measurably worse.
+- The first line of the input, which says a post follows to be judged, also keeps Google's word filter from refusing posts over a slur they contain.
+
+After moving a threshold, update `TRADEOFF` in `taxonomy.ts`, which is what the side panel tells people each strictness costs.
 
 ## Adding a site
 
 1. Implement `SiteAdapter` (`src/sites/site.ts`): find post elements, read one into a `Post`, and name the element to collapse. `src/sites/x.ts` is the reference.
 2. Add it to `SITES` in `src/content/index.ts`.
 3. Add the site to `content_scripts.matches` and `host_permissions` in `public/manifest.json`.
-4. Generalize the X-specific copy: the first line of `describePost` in `src/core/decisions.ts` and a few strings in the side panel.
+4. Generalize the X-specific copy: `QUESTION` in `src/core/taxonomy.ts`, the first line of `describePost` in `src/core/decisions.ts` and a few strings in the side panel.
 
 If most posts on a page can't be read, usually because the site changed its markup, the side panel says so instead of failing silently.
 
 ## Privacy
 
-The text of posts you scroll past (plus the post it replies to or quotes, link card text and up to two images) is sent to Google with your key. Nothing else leaves the browser. The key is kept in `chrome.storage.local`, and settings sync through your Chrome profile.
+The text of posts you scroll past (plus the post it replies to or quotes, link card text and up to two images) is sent to Google with your key. Nothing else leaves the browser. The key is kept in `chrome.storage.local`, and settings sync through your Chrome profile. Google may use what a free-tier key sends to improve its products.

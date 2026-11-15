@@ -1,18 +1,16 @@
+import { DecisionError, decide, questionKey, type Scores } from "../core/decisions.ts";
 import {
-  DecisionError,
-  QUESTIONS,
-  decide,
-  questionsFor,
-  type AskedQuestion,
-} from "../core/decisions.ts";
-import { STATUS_KEY, type ClassifyResponse, type ServiceStatus } from "../core/messages.ts";
+  STATUS_KEY,
+  USAGE_KEY,
+  type ClassifyResponse,
+  type ServiceStatus,
+  type Usage,
+} from "../core/messages.ts";
 import type { Post } from "../core/post.ts";
 import { loadSettings } from "../core/settings.ts";
-import type { CategoryId } from "../core/taxonomy.ts";
-import { getEntry, putEntry, type Entry } from "./cache.ts";
+import { getEntry, putEntry } from "./cache.ts";
 
 const CONCURRENCY = 4;
-const CURRENT_KEYS = new Set(QUESTIONS.map((q) => q.key));
 
 let apiKey: string | undefined;
 let keyRejected = false;
@@ -28,19 +26,12 @@ export function setApiKey(key: string | undefined, isNew: boolean) {
   if (isNew) void setStatus({ kind: "ok" });
 }
 
-/**
- * Scores a post on the given categories, from cache when possible. Concurrent calls for one post
- * share a request.
- */
-export function classify(
-  post: Post,
-  categories: CategoryId[],
-  cachedOnly: boolean,
-): Promise<ClassifyResponse> {
-  if (cachedOnly) return run(post, categories, true);
+/** Scores a post, from cache when possible. Concurrent calls for one post share a request. */
+export function classify(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
+  if (cachedOnly) return run(post, true);
   let pending = inflight.get(post.id);
   if (!pending) {
-    pending = run(post, categories, false).finally(() => inflight.delete(post.id));
+    pending = run(post, false).finally(() => inflight.delete(post.id));
     inflight.set(post.id, pending);
   }
   return pending;
@@ -51,37 +42,29 @@ export async function setNotSlop(id: string, notSlop: boolean) {
   if (entry) await putEntry({ ...entry, notSlop });
 }
 
-async function run(
-  post: Post,
-  categories: CategoryId[],
-  cachedOnly: boolean,
-): Promise<ClassifyResponse> {
-  const entry: Entry = (await getEntry(post.id)) ?? { id: post.id, scores: {}, seen: 0 };
-  const asked = questionsFor(post).filter((q) => categories.includes(q.category));
-  const missing = entry.blocked ? [] : asked.filter((q) => !(q.key in entry.scores));
-
-  if (missing.length) {
+async function run(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
+  const key = questionKey(post);
+  let entry = await getEntry(post.id);
+  if (entry?.key !== key) {
     if (cachedOnly) return { uncached: true };
-    const answers = await ask(post, missing);
-    if (answers === "unavailable") return { unavailable: true };
-    if (answers === "blocked") entry.blocked = true;
-    else entry.scores = { ...pickCurrent(entry.scores), ...answers };
+    const answer = await ask(post);
+    if (answer === "unavailable") return { unavailable: true };
+    const blocked = answer === "blocked";
+    entry = {
+      id: post.id,
+      key,
+      scores: blocked ? {} : answer,
+      blocked,
+      notSlop: entry?.notSlop,
+      seen: 0,
+    };
   }
-  entry.seen = Date.now();
-  await putEntry(entry);
-
-  const scores = Object.fromEntries(
-    asked.filter((q) => q.key in entry.scores).map((q) => [q.category, entry.scores[q.key]]),
-  );
+  await putEntry({ ...entry, seen: Date.now() });
   // Google's safety filters refuse to read some posts at all. What they refuse is explicit or worse.
-  if (entry.blocked) scores.nsfw = 1;
-  return { scores, notSlop: Boolean(entry.notSlop) };
+  return { scores: entry.blocked ? { nsfw: 1 } : entry.scores, notSlop: Boolean(entry.notSlop) };
 }
 
-async function ask(
-  post: Post,
-  questions: AskedQuestion[],
-): Promise<Record<string, number> | "blocked" | "unavailable"> {
+async function ask(post: Post): Promise<Scores | "blocked" | "unavailable"> {
   await acquire();
   try {
     let withImages = true;
@@ -90,9 +73,10 @@ async function ask(
       // Filtering may have been switched off while this waited its turn.
       if (!apiKey || keyRejected || !(await loadSettings()).enabled) return "unavailable";
       try {
-        const answers = await decide(apiKey, post, questions, withImages);
+        const { scores, tokens } = await decide(apiKey, post, withImages);
         if (pausedUntil <= Date.now()) void setStatus({ kind: "ok" });
-        return answers;
+        recordUsage(tokens);
+        return scores;
       } catch (error) {
         if (!(error instanceof DecisionError)) throw error;
         switch (error.kind) {
@@ -129,10 +113,6 @@ async function ask(
   }
 }
 
-function pickCurrent(scores: Record<string, number>) {
-  return Object.fromEntries(Object.entries(scores).filter(([key]) => CURRENT_KEYS.has(key)));
-}
-
 async function acquire() {
   if (active < CONCURRENCY) {
     active++;
@@ -142,7 +122,8 @@ async function acquire() {
 }
 
 function release() {
-  const next = waiting.shift();
+  // Newest first: after a rate-limit pause, the posts on screen now matter more than the backlog.
+  const next = waiting.pop();
   if (next) next();
   else active--;
 }
@@ -154,6 +135,29 @@ async function setStatus(status: ServiceStatus) {
   if (json === lastStatus) return;
   lastStatus = json;
   await chrome.storage.session.set({ [STATUS_KEY]: status });
+}
+
+let unsaved = { posts: 0, tokens: 0 };
+let saving: ReturnType<typeof setTimeout> | undefined;
+
+/** Adds a request to this month's tally, written in batches. */
+function recordUsage(tokens: number) {
+  unsaved.posts++;
+  unsaved.tokens += tokens;
+  saving ??= setTimeout(async () => {
+    saving = undefined;
+    const added = unsaved;
+    unsaved = { posts: 0, tokens: 0 };
+    const month = new Date().toISOString().slice(0, 7);
+    const { [USAGE_KEY]: stored } = await chrome.storage.local.get(USAGE_KEY);
+    const before = (stored as Usage | undefined)?.month === month ? (stored as Usage) : undefined;
+    const usage: Usage = {
+      month,
+      posts: (before?.posts ?? 0) + added.posts,
+      tokens: (before?.tokens ?? 0) + added.tokens,
+    };
+    await chrome.storage.local.set({ [USAGE_KEY]: usage });
+  }, 2000);
 }
 
 function sleep(ms: number) {

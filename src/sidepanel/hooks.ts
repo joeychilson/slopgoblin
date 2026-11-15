@@ -1,10 +1,12 @@
 import { useEffect, useState } from "preact/hooks";
 import {
   STATUS_KEY,
+  USAGE_KEY,
   type RuntimeMessage,
   type ServiceStatus,
   type TabMessage,
   type TabState,
+  type Usage,
 } from "../core/messages.ts";
 import {
   loadApiKey,
@@ -43,6 +45,19 @@ export function useStatus() {
     return watchStorage<ServiceStatus>("session", STATUS_KEY, (next) => next && setStatus(next));
   }, []);
   return status;
+}
+
+/** This month's checking, or undefined before anything has been checked. */
+export function useUsage() {
+  const [usage, setUsage] = useState<Usage>();
+  useEffect(() => {
+    const month = new Date().toISOString().slice(0, 7);
+    const show = (stored: Usage | undefined) =>
+      setUsage(stored?.month === month ? stored : undefined);
+    void chrome.storage.local.get(USAGE_KEY).then((stored) => show(stored[USAGE_KEY] as Usage));
+    return watchStorage<Usage>("local", USAGE_KEY, show);
+  }, []);
+  return usage;
 }
 
 export interface ActiveTab {

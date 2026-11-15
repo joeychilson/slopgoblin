@@ -1,27 +1,48 @@
-// Scores eval/posts.jsonl against the live Decisions API and reports how well each
-// category's question separates labeled posts. Answers are cached per question version
-// in eval/.cache.json, so rewording one question only re-asks that question.
+// Sends every labeled post through the live Decisions API exactly as the extension would, then
+// reports what each strictness hides: clean posts hidden by mistake, and junk caught.
+// Answers are cached in eval/.cache.json under the question's fingerprint, so only posts whose
+// question or content changed are asked again.
 //
-//   vp run eval            precision and recall per category and strictness
-//   vp run eval --misses   also list mistakes at "balanced"
+//   vp run eval                    the tables
+//   vp run eval --misses           also list every mistake at "balanced"
+//   vp run eval --misses strict    …or at another strictness
 //
+// eval/posts.jsonl is a written-to-order set that ships with the repo. Any eval/real/*.jsonl
+// (same shape, collected from a real feed) is scored alongside it.
 // The key comes from GEMINI_API_KEY, or from .env.local.
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import {
   DecisionError,
+  USD_PER_MILLION_TOKENS,
   decide,
-  questionsFor,
-  type AskedQuestion,
+  questionKey,
   type Scores,
 } from "../src/core/decisions.ts";
+import { judge } from "../src/core/policy.ts";
 import type { PostContent } from "../src/core/post.ts";
-import { CATEGORIES, THRESHOLD, type CategoryId, type Strictness } from "../src/core/taxonomy.ts";
+import { DEFAULT_SETTINGS } from "../src/core/settings.ts";
+import {
+  CATEGORIES,
+  STRICTNESS,
+  THRESHOLD,
+  type CategoryId,
+  type Strictness,
+} from "../src/core/taxonomy.ts";
 
 interface Row extends PostContent {
   id: string;
+  /** Every category a reasonable reader would file the post under. None means it should stay. */
   labels: CategoryId[];
+  /** A judgment call either way. Scored, but left out of the totals. */
+  unsure?: boolean;
   note?: string;
+}
+
+interface Answer {
+  scores: Scores;
+  tokens: number;
 }
 
 const dir = new URL(".", import.meta.url);
@@ -29,98 +50,142 @@ const cachePath = new URL(".cache.json", dir);
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) throw new Error("Set GEMINI_API_KEY");
 
-const rows: Row[] = readFileSync(new URL("posts.jsonl", dir), "utf8")
-  .split("\n")
-  .filter((line) => line.trim())
-  .map((line) => JSON.parse(line));
-const cache: Record<string, number> = existsSync(cachePath)
+const read = (file: URL): Row[] =>
+  readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line));
+
+const realDir = new URL("real/", dir);
+const sets: { name: string; rows: Row[] }[] = [
+  ...(existsSync(realDir) ? readdirSync(realDir) : [])
+    .filter((file) => file.endsWith(".jsonl"))
+    .sort()
+    .map((file) => ({ name: file.replace(".jsonl", ""), rows: read(new URL(file, realDir)) })),
+  { name: "synthetic", rows: read(new URL("posts.jsonl", dir)) },
+];
+
+const cache: Record<string, Answer> = existsSync(cachePath)
   ? JSON.parse(readFileSync(cachePath, "utf8"))
   : {};
-// The text length re-asks a post whose text was edited.
-const cacheKey = (row: Row, q: AskedQuestion) => `${row.id}|${q.key}|${row.text.length}`;
 
-await runPool(rows, 8, async (row) => {
-  const missing = questionsFor(row).filter((q) => !(cacheKey(row, q) in cache));
-  if (!missing.length) return;
+const cacheKey = (row: Row) => {
+  const { author, text, quote, link, replyTo, images } = row;
+  const content = JSON.stringify([author, text, quote, link, replyTo, images]);
+  return `${row.id}|${questionKey(row)}|${createHash("sha1").update(content).digest("hex").slice(0, 10)}`;
+};
+
+const all = sets.flatMap((set) => set.rows);
+const missing = all.filter((row) => !(cacheKey(row) in cache));
+if (missing.length) console.log(`Asking about ${missing.length} of ${all.length} posts…`);
+
+await runPool(missing, 8, async (row) => {
+  let withImages = true;
   for (let attempt = 0; ; attempt++) {
     try {
-      const answers = await decide(apiKey, row, missing);
-      for (const q of missing) {
-        if (q.key in answers) cache[cacheKey(row, q)] = answers[q.key]!;
-      }
-      // Saved as answers arrive, so an interrupted run doesn't pay for them again.
-      writeFileSync(cachePath, JSON.stringify(cache));
-      return;
+      cache[cacheKey(row)] = await decide(apiKey, row, withImages);
     } catch (error) {
       if (!(error instanceof DecisionError)) throw error;
-      if (error.kind === "rate") await sleep(error.retryAfterMs);
-      else if (error.kind === "transient" && attempt < 3) await sleep(2000 * 2 ** attempt);
-      else if (error.kind === "blocked") {
-        console.warn(`${row.id}: blocked by safety filter`);
-        return;
-      } else throw error;
+      if (error.kind === "rate") {
+        await sleep(error.retryAfterMs);
+        continue;
+      }
+      if (error.kind === "transient" && attempt < 3) {
+        await sleep(2000 * 2 ** attempt);
+        continue;
+      }
+      if (error.kind === "media" && withImages) {
+        withImages = false;
+        continue;
+      }
+      if (error.kind !== "blocked") throw error;
+      // The extension hides what Google's safety filter refuses to read, so the eval does too.
+      console.warn(`${row.id}: blocked by the safety filter`);
+      cache[cacheKey(row)] = { scores: { nsfw: 1 }, tokens: 0 };
     }
+    // Saved as answers arrive, so an interrupted run doesn't pay for them again.
+    writeFileSync(cachePath, JSON.stringify(cache));
+    return;
   }
 });
 
-const scored = rows.map((row) => ({
-  row,
-  scores: Object.fromEntries(
-    questionsFor(row).map((q) => [q.category, cache[cacheKey(row, q)] ?? 0]),
-  ) as Scores,
-}));
-const levels: Strictness[] = ["relaxed", "balanced", "strict"];
-const pct = (n: number) => (Number.isFinite(n) ? `${Math.round(n * 100)}%`.padStart(4) : "   –");
+const answerFor = (row: Row) => cache[cacheKey(row)]!;
+const verdict = (row: Row, strictness: Strictness) =>
+  judge(
+    { scores: answerFor(row).scores, isAd: false, handle: row.author.handle },
+    { ...DEFAULT_SETTINGS, strictness },
+  );
 
+const firm = (rows: Row[]) => rows.filter((row) => !row.unsure);
+const clean = (rows: Row[]) => firm(rows).filter((row) => !row.labels.length);
+const junk = (rows: Row[]) => firm(rows).filter((row) => row.labels.length);
+const hidden = (rows: Row[], strictness: Strictness) =>
+  rows.filter((row) => verdict(row, strictness)).length;
+
+const cell = (value: string | number, width: number) => String(value).padStart(width);
+const levelHeads = STRICTNESS.map((s) => `${s} ≥${THRESHOLD[s]}`.padStart(15)).join("  ");
+
+// What a reader feels: posts that should have stayed but were hidden, and junk that was caught.
+console.log(`\n${"".padEnd(23)}${levelHeads}`);
 console.log(
-  `\n${rows.length} posts, hidden at ${levels.map((l) => `${l} ≥ ${THRESHOLD[l]}`).join(", ")}\n`,
+  `${"set".padEnd(11)}${cell("clean", 6)}${cell("junk", 6)}${STRICTNESS.map(() => "    wrong  caught").join("")}`,
 );
-console.log(`${"".padEnd(20)} │ ${levels.map((l) => l.padEnd(9)).join(" │ ")}`);
-console.log(`${"category".padEnd(20)} │ ${levels.map(() => "   P    R").join(" │ ")}`);
-for (const category of CATEGORIES) {
-  if (!("question" in category)) continue;
-  const relevant = scored.filter((s) => s.scores[category.id] !== undefined);
-  const positives = relevant.filter((s) => s.row.labels.includes(category.id)).length;
-  const cells = levels.map((level) => {
-    const hits = relevant.filter((s) => (s.scores[category.id] ?? 0) >= THRESHOLD[level]);
-    const tp = hits.filter((s) => s.row.labels.includes(category.id)).length;
-    return `${pct(tp / hits.length)} ${pct(tp / positives)}`;
-  });
-  console.log(`${category.id.padEnd(16)} ${String(positives).padStart(3)} │ ${cells.join(" │ ")}`);
-}
-
-// What users actually feel: clean posts that got hidden, and slop that slipped through.
-console.log("\nwhole post        false hides   slop caught");
-for (const level of levels) {
-  const hidden = scored.map((s) => ({ ...s, hidden: hiddenBy(s.scores, level) }));
-  const clean = hidden.filter((s) => !s.row.labels.length);
-  const slop = hidden.filter((s) => s.row.labels.length);
-  const falseHides = clean.filter((s) => s.hidden.length).length;
-  const caught = slop.filter((s) => s.hidden.length).length;
+const total = { name: "all", rows: all };
+for (const { name, rows } of sets.length > 1 ? [...sets, total] : sets) {
+  const cells = STRICTNESS.map(
+    (s) => `${cell(hidden(clean(rows), s), 9)}${cell(hidden(junk(rows), s), 8)}`,
+  );
   console.log(
-    `${level.padEnd(16)} ${`${falseHides}/${clean.length}`.padStart(8)} ${pct(falseHides / clean.length)}   ${`${caught}/${slop.length}`.padStart(7)} ${pct(caught / slop.length)}`,
+    `${name.padEnd(11)}${cell(clean(rows).length, 6)}${cell(junk(rows).length, 6)}${cells.join("")}`,
   );
 }
 
-if (process.argv.includes("--misses")) {
-  console.log("\nMistakes at balanced:");
-  for (const { row, scores } of scored) {
-    const hidden = hiddenBy(scores, "balanced");
-    const wrong = hidden.filter((c) => !row.labels.includes(c));
-    const missed = row.labels.filter((c) => !hidden.includes(c) && scores[c] !== undefined);
-    if (!wrong.length && !missed.length) continue;
-    const fmt = (ids: CategoryId[]) => ids.map((c) => `${c} ${pct(scores[c] ?? 0).trim()}`);
-    console.log(
-      `\n${row.id}  ${[...fmt(wrong).map((s) => `+${s}`), ...fmt(missed).map((s) => `-${s}`)].join("  ")}`,
-    );
-    console.log(`  ${row.text.replaceAll("\n", " ").slice(0, 220)}`);
-    if (row.note) console.log(`  note: ${row.note}`);
-  }
+// Per category: how much of it is caught, and how often the bar names a category it was labeled.
+console.log(
+  `\n${"category".padEnd(17)}${cell("junk", 6)}${STRICTNESS.map((s) => cell(s, 10)).join("")}${cell("named", 10)}`,
+);
+for (const category of CATEGORIES) {
+  if (!("describes" in category)) continue;
+  const labeled = junk(all).filter((row) => row.labels.includes(category.id));
+  const caught = labeled.flatMap((row) => {
+    const hit = verdict(row, "balanced");
+    return hit ? [row.labels.includes(hit.category)] : [];
+  });
+  const named = caught.filter(Boolean).length;
+  console.log(
+    `${category.id.padEnd(17)}${cell(labeled.length, 6)}${STRICTNESS.map((s) => cell(hidden(labeled, s), 10)).join("")}${cell(`${named}/${caught.length}`, 10)}`,
+  );
 }
 
-/** Every category over the threshold, unlike `judge`, which picks one, so misses can be listed. */
-function hiddenBy(scores: Scores, level: Strictness): CategoryId[] {
-  return CATEGORIES.filter((c) => (scores[c.id] ?? -1) >= THRESHOLD[level]).map((c) => c.id);
+const tokens = all.map((row) => answerFor(row).tokens).filter(Boolean);
+const average = tokens.reduce((sum, n) => sum + n, 0) / tokens.length;
+console.log(
+  `\n${Math.round(average)} tokens a post on average: $${((average * USD_PER_MILLION_TOKENS) / 1000).toFixed(3)} per 1,000 posts.`,
+);
+
+const flag = process.argv.indexOf("--misses");
+if (flag !== -1) {
+  const level = STRICTNESS.find((s) => s === process.argv[flag + 1]) ?? "balanced";
+  const pct = (p: number) => `${Math.round(p * 100)}%`;
+  const describe = (row: Row) => {
+    const top = Object.entries(answerFor(row).scores)
+      .filter(([, p]) => p >= 0.05)
+      .sort(([, a], [, b]) => b - a)
+      .map(([id, p]) => `${id} ${pct(p)}`);
+    const lines = [
+      `${row.id}  @${row.author.handle}  ${top.join(", ") || "fine"}`,
+      `  ${row.text.replaceAll("\n", " ").slice(0, 220) || "(no text)"}`,
+    ];
+    if (row.labels.length) lines.push(`  labeled: ${row.labels.join(", ")}`);
+    if (row.note) lines.push(`  note: ${row.note}`);
+    return lines.join("\n");
+  };
+  const wrong = clean(all).filter((row) => verdict(row, level));
+  const missed = junk(all).filter((row) => !verdict(row, level));
+  console.log(`\nHidden at ${level}, should have stayed (${wrong.length}):\n`);
+  console.log(wrong.map(describe).join("\n\n"));
+  console.log(`\nJunk that got through at ${level} (${missed.length}):\n`);
+  console.log(missed.map(describe).join("\n\n"));
 }
 
 async function runPool<T>(items: T[], size: number, task: (item: T) => Promise<void>) {

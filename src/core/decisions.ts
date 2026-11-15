@@ -1,37 +1,30 @@
 import type { PostContent } from "./post.ts";
-import { CATEGORIES, type CategoryId, type Question } from "./taxonomy.ts";
+import { CATEGORIES, FINE, QUESTION, type CategoryId } from "./taxonomy.ts";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/decisions";
 const MODEL = "gemini-decision-1";
 /** Bump when `describePost` changes meaningfully, so cached scores get recomputed. */
-const INPUT_VERSION = 1;
+const INPUT_VERSION = 2;
 const MAX_IMAGES = 2;
+/** Input tokens are all the Decisions API bills for. */
+export const USD_PER_MILLION_TOKENS = 0.1;
 
+/** The probability a post belongs to each category. What's left over is the chance it's fine. */
 export type Scores = Partial<Record<CategoryId, number>>;
 
-export interface AskedQuestion {
-  category: CategoryId;
-  /** Doubles as the API question key and the cache key: it changes whenever the wording does. */
-  key: string;
-  question: Question;
-  repliesOnly: boolean;
-}
-
-export const QUESTIONS: AskedQuestion[] = CATEGORIES.flatMap((c) =>
-  "question" in c
-    ? [
-        {
-          category: c.id,
-          key: `${c.id}-${hash(`${INPUT_VERSION}|${c.question.instructions}|${c.question.yes}|${c.question.no}`)}`,
-          question: c.question,
-          repliesOnly: "repliesOnly" in c && c.repliesOnly,
-        },
-      ]
-    : [],
+const OPTIONS = CATEGORIES.flatMap((c) =>
+  "describes" in c ? [{ id: c.id, describes: c.describes, repliesOnly: "repliesOnly" in c }] : [],
 );
 
-export const questionsFor = (post: PostContent) =>
-  QUESTIONS.filter((q) => !q.repliesOnly || post.replyTo);
+const optionsFor = (isReply: boolean) => OPTIONS.filter((o) => isReply || !o.repliesOnly);
+
+const keyFor = (isReply: boolean) =>
+  hash([INPUT_VERSION, QUESTION, FINE, ...optionsFor(isReply).map((o) => o.describes)].join("|"));
+const POST_KEY = keyFor(false);
+const REPLY_KEY = keyFor(true);
+
+/** Fingerprints the question a post gets asked. A cached answer under another key is stale. */
+export const questionKey = (post: PostContent) => (post.replyTo ? REPLY_KEY : POST_KEY);
 
 type DecisionErrorKind = "auth" | "rate" | "blocked" | "media" | "transient" | "fatal";
 
@@ -46,17 +39,14 @@ export class DecisionError extends Error {
   }
 }
 
-/**
- * Asks the given questions about a post. Returns the probability of "yes" per question key,
- * leaving out any question the API didn't answer.
- */
+/** Asks the model which category a post falls in. `tokens` is what the request was billed. */
 export async function decide(
   apiKey: string,
   post: PostContent,
-  questions: AskedQuestion[],
   withImages = true,
-): Promise<Record<string, number>> {
+): Promise<{ scores: Scores; tokens: number }> {
   const images = withImages ? (post.images ?? []).slice(0, MAX_IMAGES) : [];
+  const options = optionsFor(Boolean(post.replyTo));
   const body = {
     model: MODEL,
     input: [
@@ -68,16 +58,13 @@ export async function decide(
         resolution: "low",
       })),
     ],
-    questions: Object.fromEntries(
-      questions.map((q) => [
-        q.key,
-        {
-          type: "noul",
-          instructions: q.question.instructions,
-          criteria: { true_description: q.question.yes, false_description: q.question.no },
-        },
-      ]),
-    ),
+    questions: {
+      kind: {
+        type: "choice",
+        instructions: QUESTION,
+        criteria: { fine: FINE, ...Object.fromEntries(options.map((o) => [o.id, o.describes])) },
+      },
+    },
   };
 
   let res: Response;
@@ -92,17 +79,26 @@ export async function decide(
   }
   if (!res.ok) throw await toDecisionError(res, images.length > 0);
 
-  const { answers } = (await res.json()) as { answers: Record<string, { noul?: number }> };
-  return Object.fromEntries(
-    questions.flatMap(({ key }) => {
-      const p = answers[key]?.noul;
-      return p === undefined ? [] : [[key, p]];
-    }),
-  );
+  const json = (await res.json()) as {
+    answers?: { kind?: { probabilities?: Record<string, number> } };
+    usage?: { total_input_tokens?: number };
+    prompt_feedback?: { block_reason?: string };
+  };
+  const probabilities = json.answers?.kind?.probabilities;
+  if (!probabilities) {
+    const reason = json.prompt_feedback?.block_reason;
+    throw new DecisionError(reason ? "blocked" : "fatal", reason ?? "Gemini gave no answer");
+  }
+  return {
+    scores: Object.fromEntries(options.map((o) => [o.id, probabilities[o.id] ?? 0])),
+    tokens: json.usage?.total_input_tokens ?? 0,
+  };
 }
 
 function describePost(post: PostContent, imageCount: number): string {
   const lines = [
+    // Saying up front that this is content to be judged also keeps Google's word filter from
+    // refusing posts over a slur they contain.
     "A post from an X (Twitter) feed. Judge the post itself; a parent or quoted post is only context.",
     "",
     `Author: ${post.author.name} (@${post.author.handle})`,
@@ -113,7 +109,9 @@ function describePost(post: PostContent, imageCount: number): string {
     lines.push(`Replying to @${replyTo.handle}, who posted:`, tag("parent", parent, 600));
   }
   lines.push(tag("post", post.text || "(no text)", 2000));
-  if (quote) lines.push(`Quoting @${quote.handle}:`, tag("quoted", quote.text, 600));
+  if (quote) {
+    lines.push(`Quoting @${quote.handle}:`, tag("quoted", quote.text || "(no text)", 600));
+  }
   if (post.link) lines.push(`Link card: ${clip(post.link, 200)}`);
   if (imageCount) lines.push(`Attached image${imageCount > 1 ? "s" : ""} follow.`);
   return lines.join("\n");

@@ -15,7 +15,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
   switch (message.type) {
     case "classify":
       keyLoaded
-        .then(() => classify(message.post, message.categories, message.cachedOnly))
+        .then(() => classify(message.post, message.cachedOnly))
         .then(sendResponse, (error: unknown) => {
           console.error("Slop Goblin:", error);
           sendResponse({ unavailable: true } satisfies ClassifyResponse);

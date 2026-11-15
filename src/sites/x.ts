@@ -27,6 +27,8 @@ type Reply = NonNullable<Post["replyTo"]>;
 export const x: SiteAdapter = {
   findPosts: () => [...document.querySelectorAll(SEL.post)],
 
+  isFocused: (el) => el.matches(SEL.main),
+
   container: (el) => el.closest<HTMLElement>(SEL.cell),
 
   viewer: () => handleFrom(document.querySelector(SEL.viewer)?.getAttribute("href")),
@@ -69,7 +71,8 @@ function ownParts(el: Element) {
   // A quoted post has its own author line; the article's first one is the post's.
   const [user, quoteUser] = el.querySelectorAll(SEL.user);
   if (!user) return null;
-  const quote = quoteUser && outermostWithout(quoteUser, user);
+  // X renders a quoted post as one big link.
+  const quote = quoteUser?.closest('[role="link"]');
   const find = (selector: string) =>
     [...el.querySelectorAll(selector)].find((node) => !quote?.contains(node));
   const permalink = find(SEL.permalink)?.getAttribute("href");
@@ -167,15 +170,6 @@ function smallRendition(src: string) {
   const url = new URL(src);
   if (url.searchParams.has("name")) url.searchParams.set("name", "small");
   return url.href;
-}
-
-/** The largest ancestor of `node` that doesn't also contain `other`. */
-function outermostWithout(node: Element, other: Element): Element {
-  let current = node;
-  while (current.parentElement && !current.parentElement.contains(other)) {
-    current = current.parentElement;
-  }
-  return current;
 }
 
 function handleFrom(href: string | null | undefined) {

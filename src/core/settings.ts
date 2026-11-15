@@ -12,7 +12,7 @@ export interface Settings {
   trusted: string[];
 }
 
-const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
   strictness: "balanced",
   categories: Object.fromEntries(CATEGORIES.map((c) => [c.id, true])) as Record<

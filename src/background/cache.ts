@@ -1,7 +1,11 @@
-/** Per-post answers, keyed by question key so reworded questions re-ask only themselves. */
+import type { Scores } from "../core/decisions.ts";
+
+/** A post's cached answer. */
 export interface Entry {
   id: string;
-  scores: Record<string, number>;
+  /** The `questionKey` the scores answer. Rewording the question makes them stale. */
+  key: string;
+  scores: Scores;
   /** Rejected by the API's safety filter; never resent. */
   blocked?: boolean;
   notSlop?: boolean;
@@ -15,9 +19,12 @@ let db: Promise<IDBDatabase> | undefined;
 
 function open(): Promise<IDBDatabase> {
   db ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open("slopgoblin", 1);
-    req.onupgradeneeded = () =>
+    const req = indexedDB.open("slopgoblin", 2);
+    req.onupgradeneeded = () => {
+      // Version 1 kept one score per yes/no question. Those answers don't carry over.
+      if (req.result.objectStoreNames.contains(STORE)) req.result.deleteObjectStore(STORE);
       req.result.createObjectStore(STORE, { keyPath: "id" }).createIndex("seen", "seen");
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });

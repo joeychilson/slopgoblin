@@ -1,102 +1,88 @@
 export type Strictness = "relaxed" | "balanced" | "strict";
 
-export interface Question {
-  instructions: string;
-  yes: string;
-  no: string;
-}
-
 interface Category {
   id: string;
   label: string;
   blurb: string;
-  /** Absent for categories decided by a rule instead of the model (ads). */
-  question?: Question;
+  /** How the model is told to recognize it. Absent for categories decided by a rule (ads). */
+  describes?: string;
   repliesOnly?: boolean;
 }
 
-/** Minimum probability of "yes" to hide a post. Tuned with `vp run eval`. */
-export const THRESHOLD: Record<Strictness, number> = { relaxed: 0.9, balanced: 0.75, strict: 0.55 };
+/**
+ * The model answers one multiple-choice question per post: which of the categories below fits,
+ * or `fine`. It returns a probability for every option, so a post's chance of being junk is
+ * everything that didn't go to `fine`. Wording here is tuned with `vp run eval`; the options'
+ * detail is what keeps real posts out, so measure before trimming it.
+ */
+export const QUESTION =
+  "Which label best fits this post from an X (Twitter) feed? Judge the post itself; a parent or quoted post is only context.";
+
+export const FINE =
+  "A normal post or reply. News; opinions and criticism about politics, public figures or events, even harsh or partisan ones; jokes and memes; fans reacting to a team, player, show or artist; sports banter; personal updates; someone's own work; real questions. A reply that reacts to its parent post, however short: congratulations, thanks, agreement, disagreement, an insult, a joke.";
+
+/** Minimum probability of junk to hide a post. Tuned with `vp run eval`. */
+export const THRESHOLD: Record<Strictness, number> = { relaxed: 0.85, balanced: 0.6, strict: 0.4 };
 
 export const STRICTNESS = Object.keys(THRESHOLD) as Strictness[];
+
+/** What each strictness costs, as `vp run eval` measures it. Re-measure after moving a threshold. */
+export const TRADEOFF: Record<Strictness, string> = {
+  relaxed: "Hides only the unmistakable. About a fifth of the junk gets through.",
+  balanced: "Catches nearly all the junk. About 1 real post in 200 is hidden by mistake.",
+  strict: "Catches borderline junk too. About 1 real post in 40 is hidden by mistake.",
+};
 
 export const CATEGORIES = [
   {
     id: "ragebait",
     label: "Ragebait",
     blurb: "Built to make you angry",
-    question: {
-      instructions:
-        "Is this post ragebait, designed to provoke anger or outrage for engagement rather than to inform or argue in good faith?",
-      yes: "Inflammatory framing, sweeping generalizations about a group of people ('women/men/Gen Z/boomers are…'), strawmen, deliberately offensive or contrarian hot takes, outrage over trivial or invented situations, culture-war bait.",
-      no: "An opinion argued with reasons, even a strong or controversial one; criticism of a specific action or person's conduct; reporting of upsetting news; obvious satire; ordinary disagreement.",
-    },
+    describes:
+      "Bait built to make people angry for engagement: sweeping put-downs of a whole kind of person (women, men, a generation, a nationality, a profession), gender-war bait, outrage over trivial or made-up everyday incidents, and outrage-clip accounts whose caption is framed to provoke ('X was SHOCKED that…').",
   },
   {
     id: "ai_slop",
     label: "AI slop",
-    blurb: "Generic AI-written filler and engagement listicles",
-    question: {
-      instructions:
-        "Is this post low-effort AI-generated content, written in a generic chatbot voice to farm engagement rather than to say something the author actually knows or thinks?",
-      yes: "Reads like unedited chatbot output: hollow hooks ('Here's the thing', 'Let that sink in'), formulaic listicles or threads of tools, prompts or lessons, 'It's not X. It's Y.' cadence, buzzword-heavy hype, emoji-bullet lists of platitudes, polished but empty motivational filler.",
-      no: "Has a real human voice, specific details, first-hand experience, real news or information, or a genuine opinion. Posts about AI, AI research or news, and people showing what they built with AI are not AI slop.",
-    },
+    blurb: "Chatbot filler and fake AI images",
+    describes:
+      "Generic chatbot-voice filler (hollow hooks, 'It's not X. It's Y.', emoji-bullet platitudes, tool or prompt listicles), made-up viral stories, or AI-generated images and video posted as filler or passed off as real.",
   },
   {
     id: "clickbait",
     label: "Clickbait",
-    blurb: "Sensational hooks and recycled viral clips",
-    question: {
-      instructions:
-        "Is this post clickbait, sensationalized or withholding information to make people click, watch, or open a thread?",
-      yes: "Curiosity gaps ('You won't believe…', 'What happened next…'), hype ('This changes EVERYTHING', 'X is DEAD'), fake urgency or 'BREAKING' on things that aren't news, hooks that promise secrets or a payoff the post doesn't deliver. Also content-farm posts: viral clips or images reposted behind a vague caption that hypes a reaction instead of saying what they show ('She wasn't expecting that 😂', 'This is what heaven sounds like', 'Music is everything', 'Wait for it'), and recycled viral stories passed off as the poster's own.",
-      no: "Accurate headlines, genuine breaking news, straightforward announcements or links, posts that state their point directly, and thread intros from people sharing their own work or research, even when they build a little suspense. People sharing their own photos or videos, and fans posting a clip that names the artist, show, game or event it comes from.",
-    },
+    blurb: "Hype hooks and content-farm clips",
+    describes:
+      "Hides or hypes what it shows to make people watch or click: curiosity gaps ('I didn't know this 😱', 'Wait for it'), fake BREAKING, celebrity-gossip bait, and content-farm clips behind a vague reaction caption that doesn't say what the clip is.",
   },
   {
     id: "engagement_bait",
     label: "Engagement bait",
-    blurb: "Posts fishing for replies, likes and follows",
-    question: {
-      instructions:
-        "Is this post engagement bait, written mainly to farm replies, likes, reposts or follows rather than to share something?",
-      yes: "Asks for engagement as the point ('Reply YES if…', 'Like if you agree', 'Drop your city 👇', 'Comment X and I'll send it'), flattering or divisive prompts built to pull replies ('Most people won't understand this', 'Only real ones know'), empty 'gm'/'who's up?' farming, follow trains.",
-      no: "A real question the author wants answered, a normal opinion, joke, news, announcement, or personal update. A post or thread that teases its own content is not engagement bait.",
-    },
+    blurb: "Fishing for replies, likes and follows",
+    describes:
+      "Exists to farm replies, likes or follows: 'Reply YES if…', 'Which one?', bait questions over a clip, like or follow trains, empty 'gm' posts.",
   },
   {
     id: "reply_spam",
     label: "Reply spam",
-    blurb: "Sycophantic, bot-like and self-promo replies",
+    blurb: "Bot filler and self-promo in replies",
     repliesOnly: true,
-    question: {
-      instructions:
-        "Is this reply low-value spam that adds nothing to the conversation it replies to?",
-      yes: "Generic praise that could be pasted under any post ('Great insight! 🙌', 'So true 🔥', 'Thanks for sharing'), AI-written replies that just restate the parent, bot-like or emoji-only replies, 'check my bio', 'DM me', or unrelated self-promotion.",
-      no: "A reply that adds information, a real opinion, a question, or a joke specific to the post, including short but genuine replies between people who know each other.",
-    },
+    describes:
+      "A reply that isn't a real reaction to its parent post: bot-like or emoji-only filler, generic praise that would fit under any post, AI-written restatement of the parent, 'check my bio', self-promotion, shilling, off-topic links.",
   },
   {
     id: "nsfw",
     label: "NSFW",
-    blurb: "Nudity, porn bots and graphic gore",
-    question: {
-      instructions:
-        "Is this post not safe for work: sexual, pornographic or graphically violent content?",
-      yes: "Nudity or sexually explicit images, suggestive photos or clips posed to show off a body, porn or OnlyFans promotion ('link in bio 😈', '18+ 🔞'), porn-bot posts and replies ('my private pics are in my profile 💋'), sexual solicitation, explicit sexual descriptions, gore, or graphic injury and death.",
-      no: "Ordinary swimwear, fitness, fashion or red-carpet photos; sex education and health; dating, relationships and LGBTQ+ topics; mild innuendo and jokes; art; news about sex crimes or violence that doesn't show it.",
-    },
+    blurb: "Nudity, porn bots and gore",
+    describes:
+      "Nudity, sexual or pornographic content, bodies posed to titillate, porn or OnlyFans promotion, porn bots, explicit sexual descriptions, gore.",
   },
   {
     id: "grift",
     label: "Grift",
-    blurb: "Hustle bros, course funnels and coin shilling",
-    question: {
-      instructions: "Is this post a grift, selling or shilling something in a manipulative way?",
-      yes: "Get-rich or passive-income claims ('I made $47k in 30 days 👇'), course, newsletter or 'DM me' funnels, memecoin or stock pumping, giveaways that require follows, too-good-to-be-true offers, undisclosed paid promotion.",
-      no: "Someone plainly sharing or launching their own product, job postings, honest reviews, normal brand announcements, or ordinary discussion of money, markets, startups or crypto.",
-    },
+    blurb: "Get-rich schemes, shilling and scams",
+    describes:
+      "Manipulative selling or shilling: get-rich or passive-income claims, course or 'DM me' funnels, memecoin, token or stock pumps, airdrops, follow-to-win giveaways, scam offers.",
   },
   {
     id: "ad",

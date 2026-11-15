@@ -16,7 +16,7 @@ Each post you scroll past is judged by Google's Gemini Decisions API, with your 
 
 • Switch off any kind of junk you don't mind.
 • Three strictness levels. Balanced catches most junk and hides about 1 real post in 200 by mistake.
-• Your own posts, people you follow and accounts you mark "Always show" are left alone, and never sent to Google.
+• Your own posts, people you follow and accounts you mark "Always show" are left alone, and Google is never asked about them.
 • The side panel lists what's been hidden lately, from every tab, and how many posts each strictness would hide.
 • Peek (Alt+Shift+P) shows hidden posts in place, with a label, so you can check its work.
 • Community notes count as evidence about a post.
@@ -81,7 +81,7 @@ spending limit, and paste it here:
 2. Open https://x.com/home, signed in to any account, and scroll. Junk posts fold into a bar that says why; click it to see the post.
 3. The side panel lists what was hidden. Settings (the sliders icon) switches categories and strictness.
 
-A script runs in x.com's own page (page.js) to read whether the user follows each post's author from the data X loads, so posts from people they follow are never hidden or sent to Google. It wraps XMLHttpRequest to read X's API responses after X receives them, changes nothing, and passes on only handles and follow status.
+A script runs in x.com's own page (page.js) to read whether the user follows each post's author from the data X loads, so posts from people they follow are never hidden or sent to Google to be judged. It wraps XMLHttpRequest to read X's API responses after X receives them, changes nothing, and passes on only handles and follow status.
 ```
 
 Delete the key once the review is done.

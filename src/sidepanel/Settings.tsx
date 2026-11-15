@@ -89,7 +89,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
             <label class={settings.trustFollowing ? "row" : "row is-off"} for="trust-following">
               <span class="row-text">
                 <span class="row-title">People you follow</span>
-                <span class="row-desc">Never hidden or sent to Google</span>
+                <span class="row-desc">Never hidden or checked</span>
               </span>
               <Switch
                 id="trust-following"
@@ -119,8 +119,8 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
           </ul>
         ) : (
           <p class="hint">
-            Accounts you mark with “Always show” are never hidden or sent to Google. They’ll be
-            listed here.
+            Accounts you mark with “Always show” are never hidden or checked. They’ll be listed
+            here.
           </p>
         )}
       </section>

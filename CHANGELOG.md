@@ -14,5 +14,5 @@ The first release.
 - **The side panel** lists what's been hidden lately, in every tab, and how many posts each
   strictness would hide. Peek (Alt+Shift+P) shows hidden posts in place, with a label.
 - **Left alone:** your own posts, people you follow, accounts you mark "Always show", and the
-  post a page is about. None of them is sent to Google.
+  post a page is about. Google is never asked about them.
 - **Community notes count as evidence,** on a post and on the post it quotes.

@@ -18,9 +18,10 @@ While filtering is on, each post you scroll past on x.com is sent to Google's
 - the addresses of up to two of its images, which Google fetches from X.
 
 A post is sent once, and again only if a community note turns up on it later. These are never
-sent: your own posts, posts from people you follow
-(unless you switch that setting off), posts from accounts you've marked "Always show", ads,
-the post a page is about, and anything while filtering is off.
+sent to be judged: your own posts, posts from people you follow (unless you switch that
+setting off), posts from accounts you've marked "Always show", ads, and the post a page is
+about. When someone else replies to or quotes one of them, its text and handle still go along
+with their post, as above. Nothing is sent while filtering is off.
 
 When you add a key, one test request with the word "Hello" checks that it works.
 

@@ -9,7 +9,7 @@ content script and the side panel have no automated tests.
 
 - **Reshape, don't bolt on.** Find where a feature's rules belong and move shared logic there.
   Replace the old way rather than running two side by side.
-- **One place per rule.** What's hidden, and what's never sent to Google, is decided in
+- **One place per rule.** What's hidden, and what Google is never asked about, is decided in
   `core/policy.ts`; how a verdict reads, by `reason` there. What's stored, and where, is in
   `core/storage.ts`. Everything site-specific is in `src/sites/`.
 - **Measure before rewording the model's question.** `QUESTION`, `FINE` and the categories'

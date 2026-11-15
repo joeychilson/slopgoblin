@@ -45,11 +45,12 @@ content script (x.com)            service worker                    Gemini
   (up to two are sent, at low resolution), which averages 840 on a real feed. Output is free.
   The free tier's 50,000 tokens a minute covers about 60 posts a minute; when it runs out, the
   posts on screen are checked first once it's back.
-- **Nothing is sent that couldn't be hidden.** Not your own posts, not posts from people you
-  follow or have marked "Always show", not the post a page is about, not ads (X marks those
-  itself), and not posts you scrolled past before they finished loading. The rules for what's
-  never hidden live in `core/policy.ts`, next to the ones for what is, and
-  `core/policy.test.ts` holds them to it.
+- **Google is only asked about posts that could be hidden.** Not your own posts, not posts
+  from people you follow or have marked "Always show", not the post a page is about, not ads
+  (X marks those itself), and not posts you scrolled past before they finished loading. A reply
+  or a quote still carries the text of the post it answers, whoever wrote it, because reply
+  spam can't be judged without it. The rules for what's never hidden live in `core/policy.ts`,
+  next to the ones for what is, and `core/policy.test.ts` holds them to it.
 - **Who you follow comes from X's own data.** Posts on the page don't say whether you follow
   their author, but the data X loads for them does. A small script in X's page
   (`sites/x-follows.ts`, loaded from `content/page.ts` before X's own scripts) reads X's API

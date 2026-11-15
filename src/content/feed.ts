@@ -12,6 +12,11 @@ const RETRY_MS = 20_000;
 const SETTLE_MS = 1000;
 /** Marks each post element with its post's id. X discards elements constantly, so none are kept. */
 const ID_ATTR = "data-sg-post";
+/**
+ * X tabs stay open for days. Past this many posts, those no longer on the page are forgotten;
+ * their answers stay cached in the service worker.
+ */
+const KEEP = 2000;
 
 interface Tracked {
   post: Post;
@@ -41,11 +46,13 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   let readable = 0;
   let unreadable = 0;
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The extension was reloaded or removed: nothing can be judged or changed any more. */
+  let stopped = false;
 
   // Runs before paint, so remounted posts are hidden again without flashing.
   const observer = new MutationObserver(scan);
   watchSettings(onSettings);
-  // Before the first scan, so posts by people the reader follows are never sent.
+  // Before the first scan, so Google is never asked about posts by people the reader follows.
   site.watchFollows?.(onFollows);
   document.addEventListener("click", onBarClick, true);
   chrome.runtime.onMessage.addListener(onTabMessage);
@@ -65,7 +72,8 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       }
       readable++;
       if (post.author.handle.toLowerCase() === site.viewer()?.toLowerCase()) continue;
-      if (site.isFocused(el)) continue;
+      // The post the page is about is never hidden, and one with nothing to fold can't be.
+      if (site.isFocused(el) || !site.container(el)) continue;
       el.setAttribute(ID_ATTR, post.id);
       const t = posts.get(post.id) ?? track(post);
       // A note can turn up on a post that was judged without one. It's worth asking again.
@@ -84,7 +92,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       if (!t || t.avatar) continue;
       t.avatar = site.avatar(el);
       if (!t.avatar) continue;
-      show(t, el, true);
+      show(t, el, false);
       touched(t);
     }
   }
@@ -98,6 +106,10 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       revealed: false,
       verdict: null,
     };
+    for (const [id, old] of posts) {
+      if (posts.size < KEEP) break;
+      if (!elementsOf(old).length) posts.delete(id);
+    }
     posts.set(post.id, t);
     // The site marks ads itself, so there's nothing to ask.
     if (post.isAd) checked(t);
@@ -150,7 +162,11 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   }
 
   function wantsRequest(t: Tracked) {
-    return (t.status === "idle" || t.status === "failed") && needsScores(judged(t), settings);
+    return !stopped && (t.status === "idle" || t.status === "failed") && worthAsking(t);
+  }
+
+  function worthAsking(t: Tracked) {
+    return needsScores({ ...judged(t), isReply: Boolean(t.post.replyTo) }, settings);
   }
 
   async function request(t: Tracked) {
@@ -164,7 +180,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       const el = elementsOf(t)[0];
       // Scrolled past and unmounted already, or no longer worth asking (switched off, or the
       // site has since said the reader follows its author): it's judged if it comes back.
-      if (!el || !needsScores(judged(t), settings)) {
+      if (!el || !worthAsking(t)) {
         t.status = "idle";
         changed();
         return;
@@ -208,11 +224,12 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   /** `fresh` is false when a change lands on a post already on screen. */
   function show(t: Tracked, el: Element, fresh: boolean) {
     const cell = site.container(el);
-    if (!cell) return;
+    if (!cell || stopped) return;
     const view = viewFor(t);
-    // Collapsing a post the reader has scrolled past would yank the page up under them.
-    // It gets hidden the next time the site renders it instead.
-    if (!fresh && view.mode !== "shown" && cell.getBoundingClientRect().top < 0) return;
+    // Folding or unfolding a post the reader has scrolled past would move the page under them.
+    // It changes the next time the site renders it instead; only its bar's words change now.
+    const reshapes = view.mode !== (cell.dataset.sg ?? "shown");
+    if (!fresh && reshapes && cell.getBoundingClientRect().top < 0) return;
     renderCell(cell, view);
   }
 
@@ -240,6 +257,8 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   }
 
   function onBarClick(event: MouseEvent) {
+    // Only the reader's own clicks: a script in the page could fake a bar and click it.
+    if (!event.isTrusted) return;
     const target = (event.target as Element | null)?.closest<HTMLElement>("[data-sg-action]");
     const id = target?.closest<HTMLElement>(".sg-bar")?.dataset.id;
     const t = id && posts.get(id);
@@ -373,6 +392,8 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
 
   /** Puts every post back as the site rendered it, since nothing can be judged or revealed now. */
   function stop() {
+    if (stopped) return;
+    stopped = true;
     observer.disconnect();
     document.removeEventListener("click", onBarClick, true);
     for (const cell of document.querySelectorAll<HTMLElement>("[data-sg]")) {

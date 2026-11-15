@@ -54,17 +54,21 @@ describe("judge", () => {
 });
 
 describe("needsScores", () => {
+  const asked = (over: Partial<Judged> = {}, isReply = false) => ({ ...post(over), isReply });
+
   it("asks about a post that could be hidden", () => {
-    expect(needsScores(post(), settings())).toBe(true);
+    expect(needsScores(asked(), settings())).toBe(true);
     // Whether the reader follows the author isn't known yet.
-    expect(needsScores(post({ followed: undefined }), settings())).toBe(true);
+    expect(needsScores(asked({ followed: undefined }), settings())).toBe(true);
+    expect(needsScores(asked({}, true), settings({ categories: only("reply_spam") }))).toBe(true);
   });
 
   it("sends nothing that couldn't be hidden", () => {
-    expect(needsScores(post(), settings({ enabled: false }))).toBe(false);
-    expect(needsScores(post({ isAd: true }), settings())).toBe(false);
-    expect(needsScores(post(), settings({ trusted: ["someone"] }))).toBe(false);
-    expect(needsScores(post({ followed: true }), settings())).toBe(false);
-    expect(needsScores(post(), settings({ categories: only("ad") }))).toBe(false);
+    expect(needsScores(asked(), settings({ enabled: false }))).toBe(false);
+    expect(needsScores(asked({ isAd: true }), settings())).toBe(false);
+    expect(needsScores(asked(), settings({ trusted: ["someone"] }))).toBe(false);
+    expect(needsScores(asked({ followed: true }), settings())).toBe(false);
+    expect(needsScores(asked(), settings({ categories: only("ad") }))).toBe(false);
+    expect(needsScores(asked(), settings({ categories: only("reply_spam") }))).toBe(false);
   });
 });

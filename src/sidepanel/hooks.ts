@@ -42,6 +42,8 @@ export function useChecked() {
   const [checked, setChecked] = useState<CheckedPost[]>();
   useEffect(() => {
     const posts = new Map<string, CheckedPost>();
+    /** Posts added or dropped while the list loaded: what it read of them is out of date. */
+    const changed = new Set<string>();
     let loaded = false;
     const publish = () => loaded && setChecked([...posts.values()].sort((a, b) => b.at - a.at));
 
@@ -51,6 +53,7 @@ export function useChecked() {
       for (const [key, { newValue }] of Object.entries(changes)) {
         if (!key.startsWith(CHECKED_PREFIX)) continue;
         touched = true;
+        if (!loaded) changed.add(key);
         if (newValue) posts.set(key, newValue as CheckedPost);
         else posts.delete(key);
       }
@@ -58,9 +61,10 @@ export function useChecked() {
     };
     chrome.storage.onChanged.addListener(onChanged);
     void chrome.storage.session.get(null).then((all) => {
-      // Anything changed while this loaded is newer than what it read.
       for (const [key, value] of Object.entries(all)) {
-        if (key.startsWith(CHECKED_PREFIX) && !posts.has(key)) posts.set(key, value as CheckedPost);
+        if (key.startsWith(CHECKED_PREFIX) && !changed.has(key)) {
+          posts.set(key, value as CheckedPost);
+        }
       }
       loaded = true;
       publish();

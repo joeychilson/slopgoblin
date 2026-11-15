@@ -53,16 +53,22 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
 }
 
 /**
- * Whether the model's answer could change anything. Ads are marked by the site, and some authors
- * are never hidden, so none of those are sent to Google.
+ * Whether the model's answer could change anything. Ads are marked by the site, some authors
+ * are never hidden, and some categories are only for replies, so Google isn't asked about those.
  */
-export function needsScores(post: Omit<Judged, "scores">, settings: Settings) {
+export function needsScores(
+  post: Omit<Judged, "scores"> & { isReply: boolean },
+  settings: Settings,
+) {
   return (
     settings.enabled &&
     !post.isAd &&
     !alwaysShown(post, settings) &&
     !shownAsFollowed(post, settings) &&
-    CATEGORIES.some((c) => "describes" in c && settings.categories[c.id])
+    CATEGORIES.some(
+      (c) =>
+        "describes" in c && settings.categories[c.id] && (post.isReply || !("repliesOnly" in c)),
+    )
   );
 }
 

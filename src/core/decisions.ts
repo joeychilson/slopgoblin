@@ -6,6 +6,7 @@ const MODEL = "gemini-decision-1";
 /** Bump when `describePost` changes meaningfully, so cached scores get recomputed. */
 const INPUT_VERSION = 2;
 const MAX_IMAGES = 2;
+const TIMEOUT_MS = 30_000;
 /** Input tokens are all the Decisions API bills for. */
 export const USD_PER_MILLION_TOKENS = 0.1;
 
@@ -82,6 +83,8 @@ export async function decide(
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify(body),
+      // A stalled connection, say after the laptop wakes, would hold a place in the queue forever.
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (error) {
     throw new DecisionError("transient", String(error));

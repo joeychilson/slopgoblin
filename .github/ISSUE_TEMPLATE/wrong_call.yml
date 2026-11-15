@@ -1,0 +1,44 @@
+name: Wrong call
+description: A real post was hidden, or junk got through.
+labels: [wrong call]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Each report can become a test post in `eval/`, which is what the filter's wording is tuned on.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What went wrong
+      options:
+        - A real post was hidden
+        - Junk got through
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Link to the post
+      description: Or, if it's gone, its text and who posted it.
+    validations:
+      required: true
+  - type: input
+    id: reason
+    attributes:
+      label: What the bar said
+      description: For a hidden post, such as "Ragebait" or "Possibly clickbait".
+  - type: dropdown
+    id: strictness
+    attributes:
+      label: Strictness
+      options:
+        - Relaxed
+        - Balanced
+        - Strict
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it's wrong
+      description: What the post is, and what it should have been called.

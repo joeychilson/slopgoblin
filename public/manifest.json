@@ -3,6 +3,7 @@
   "name": "Slop Goblin",
   "version": "0.1.0",
   "description": "Hides AI slop, ragebait, clickbait, engagement bait, reply spam, NSFW posts, grifts and ads from your X feed.",
+  "homepage_url": "https://github.com/joeychilson/slopgoblin",
   "minimum_chrome_version": "123",
   "icons": {
     "16": "icons/16.png",
@@ -10,7 +11,7 @@
     "48": "icons/48.png",
     "128": "icons/128.png"
   },
-  "action": {},
+  "action": { "default_title": "Slop Goblin" },
   "side_panel": {
     "default_path": "sidepanel/index.html"
   },

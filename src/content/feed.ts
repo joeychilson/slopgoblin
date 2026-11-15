@@ -1,9 +1,9 @@
+import type { CheckedPost } from "../core/checked.ts";
 import type { Scores } from "../core/decisions.ts";
 import type { ClassifyResponse, RuntimeMessage, TabMessage, TabState } from "../core/messages.ts";
-import { judge, type Verdict } from "../core/policy.ts";
+import { judge, needsScores, type Judged, type Verdict } from "../core/policy.ts";
 import type { Post } from "../core/post.ts";
 import { updateSettings, watchSettings, type Settings } from "../core/settings.ts";
-import { CATEGORIES, STRICTNESS, type Strictness } from "../core/taxonomy.ts";
 import type { SiteAdapter } from "../sites/site.ts";
 import { renderCell, type BarAction, type View } from "./bar.ts";
 
@@ -23,8 +23,9 @@ interface Tracked {
   /** Set when the reader lets the post through from its bar, which then confirms it. */
   letThrough?: "not-slop" | "trust";
   verdict: Verdict | null;
-  hiddenAt: number;
-  /** Picked up for the side panel's list, which can outlive the post's element. */
+  /** When it was first judged. From then on it's in the side panel's list. */
+  checkedAt?: number;
+  /** X fills it in a moment after the post mounts. Kept for the list, which outlives the element. */
   avatar?: string;
 }
 
@@ -32,14 +33,20 @@ interface Tracked {
 export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   let settings = initialSettings;
   const posts = new Map<string, Tracked>();
+  /** Lowercase handles, as the site reveals whether the reader follows them. */
+  const follows = new Map<string, boolean>();
   const seen = new WeakSet<Element>();
+  /** Checked posts whose entry in the side panel's list is out of date. */
+  const unsent = new Set<Tracked>();
   let readable = 0;
   let unreadable = 0;
-  let stateTimer: ReturnType<typeof setTimeout> | undefined;
+  let flushTimer: ReturnType<typeof setTimeout> | undefined;
 
   // Runs before paint, so remounted posts are hidden again without flashing.
   const observer = new MutationObserver(scan);
   watchSettings(onSettings);
+  // Before the first scan, so posts by people the reader follows are never sent.
+  site.watchFollows?.(onFollows);
   document.addEventListener("click", onBarClick, true);
   chrome.runtime.onMessage.addListener(onTabMessage);
   observer.observe(document.body, { childList: true, subtree: true });
@@ -71,27 +78,38 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     }
     if (found) changed();
 
-    // X adds avatars a moment after a post mounts, so bars pick theirs up as they arrive.
-    for (const ghost of document.querySelectorAll<HTMLElement>(".sg-ghost:not([style])")) {
-      const el = ghost.closest("[data-sg]")?.querySelector(`[${ID_ATTR}]`);
-      const src = el && site.avatar(el);
-      if (src) ghost.style.backgroundImage = `url(${JSON.stringify(src)})`;
+    // X adds avatars a moment after a post mounts, so they're picked up as they arrive.
+    for (const el of document.querySelectorAll(`[${ID_ATTR}]`)) {
+      const t = posts.get(el.getAttribute(ID_ATTR) ?? "");
+      if (!t || t.avatar) continue;
+      t.avatar = site.avatar(el);
+      if (!t.avatar) continue;
+      show(t, el, true);
+      touched(t);
     }
   }
 
   function track(post: Post): Tracked {
     const t: Tracked = {
       post,
-      status: post.isAd ? "done" : "idle",
+      status: "idle",
       scores: {},
       notSlop: false,
       revealed: false,
       verdict: null,
-      hiddenAt: 0,
     };
     posts.set(post.id, t);
-    if (post.isAd) rejudge(t);
+    // The site marks ads itself, so there's nothing to ask.
+    if (post.isAd) checked(t);
     return t;
+  }
+
+  /** The post has its answer. */
+  function checked(t: Tracked) {
+    t.status = "done";
+    t.checkedAt ??= Date.now();
+    rejudge(t);
+    touched(t);
   }
 
   function onSettings(next: Settings) {
@@ -106,11 +124,33 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     changed();
   }
 
-  /** Nothing is sent for posts no setting could hide: that's the cheapest request there is. */
+  function onFollows(changes: [handle: string, following: boolean][]) {
+    for (const [handle, following] of changes) follows.set(handle, following);
+    const handles = new Set(changes.map(([handle]) => handle));
+    for (const t of posts.values()) {
+      if (!handles.has(handleOf(t))) continue;
+      update(t, false);
+      if (wantsRequest(t) && elementsOf(t).length) void request(t);
+      touched(t);
+    }
+  }
+
+  // Helpers are function declarations, not consts: scan() and the follows handshake run at
+  // startup, above them, and a const isn't there yet.
+
+  /** What a post's verdict rests on. */
+  function judged(t: Tracked): Judged {
+    return {
+      scores: t.scores,
+      isAd: t.post.isAd,
+      handle: t.post.author.handle,
+      notSlop: t.notSlop,
+      followed: follows.get(handleOf(t)),
+    };
+  }
+
   function wantsRequest(t: Tracked) {
-    if (t.status !== "idle" && t.status !== "failed") return false;
-    if (!settings.enabled || t.post.isAd || settings.trusted.includes(handleOf(t))) return false;
-    return CATEGORIES.some((c) => "describes" in c && settings.categories[c.id]);
+    return (t.status === "idle" || t.status === "failed") && needsScores(judged(t), settings);
   }
 
   async function request(t: Tracked) {
@@ -122,8 +162,9 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     if ("uncached" in res) {
       await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
       const el = elementsOf(t)[0];
-      // Scrolled past and unmounted already, or switched off: it's judged if it comes back.
-      if (!el || !settings.enabled) {
+      // Scrolled past and unmounted already, or no longer worth asking (switched off, or the
+      // site has since said the reader follows its author): it's judged if it comes back.
+      if (!el || !needsScores(judged(t), settings)) {
         t.status = "idle";
         changed();
         return;
@@ -133,17 +174,17 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     }
 
     if ("scores" in res) {
-      t.status = "done";
       t.scores = res.scores;
       t.notSlop ||= res.notSlop;
-      update(t, false);
+      checked(t);
+      for (const el of elementsOf(t)) show(t, el, false);
     } else {
       t.status = "failed";
       setTimeout(() => {
         if (wantsRequest(t) && elementsOf(t).length) void request(t);
       }, RETRY_MS);
+      changed();
     }
-    changed();
   }
 
   async function classify(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
@@ -152,16 +193,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   }
 
   function rejudge(t: Tracked) {
-    const verdict = verdictAt(t, settings.strictness);
-    if (verdict && !t.verdict) t.hiddenAt = Date.now();
-    t.verdict = verdict;
-  }
-
-  function verdictAt(t: Tracked, strictness: Strictness) {
-    return judge(
-      { scores: t.scores, isAd: t.post.isAd, handle: t.post.author.handle, notSlop: t.notSlop },
-      { ...settings, strictness },
-    );
+    t.verdict = judge(judged(t), settings);
   }
 
   function update(t: Tracked, fresh: boolean) {
@@ -173,7 +205,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     return document.querySelectorAll(`[${ID_ATTR}="${CSS.escape(t.post.id)}"]`);
   }
 
-  /** `fresh` is false when a verdict lands on a post already on screen. */
+  /** `fresh` is false when a change lands on a post already on screen. */
   function show(t: Tracked, el: Element, fresh: boolean) {
     const cell = site.container(el);
     if (!cell) return;
@@ -190,6 +222,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       const base = {
         id: post.id,
         author: post.author,
+        avatar: t.avatar,
         verdict,
         peek: settings.peek && !t.revealed,
       };
@@ -225,7 +258,8 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
         break;
       case "not-slop":
         t.letThrough = "not-slop";
-        setNotSlop(t, true);
+        setNotSlop(t, true, true);
+        void send({ type: "not-slop", id: t.post.id, notSlop: true });
         break;
       case "trust":
         // The settings change re-renders every post by this author.
@@ -237,21 +271,26 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
         if (t.letThrough === "trust") {
           void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handleOf(t)) }));
         } else {
-          setNotSlop(t, false);
+          setNotSlop(t, false, true);
+          void send({ type: "not-slop", id: t.post.id, notSlop: false });
         }
         break;
     }
   }
 
-  function setNotSlop(t: Tracked, notSlop: boolean) {
+  function setNotSlop(t: Tracked, notSlop: boolean, fresh: boolean) {
     t.notSlop = notSlop;
-    update(t, true);
-    void send({ type: "not-slop", id: t.post.id, notSlop });
-    changed();
+    update(t, fresh);
+    touched(t);
   }
 
-  const handleOf = (t: Tracked) => t.post.author.handle.toLowerCase();
-  const hasNote = (post: Post) => Boolean(post.readerNote ?? post.quote?.readerNote);
+  function handleOf(t: Tracked) {
+    return t.post.author.handle.toLowerCase();
+  }
+
+  function hasNote(post: Post) {
+    return Boolean(post.readerNote ?? post.quote?.readerNote);
+  }
 
   function onTabMessage(
     message: TabMessage,
@@ -272,9 +311,14 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
         sendResponse(Boolean(el));
         break;
       }
+      // Let through, or put back, from the side panel or another tab. A post hidden here gets
+      // the same confirming line as one let through from its own bar.
       case "not-slop": {
         const t = posts.get(message.id);
-        if (t) act(t, "not-slop");
+        if (!t || t.notSlop === message.notSlop) break;
+        if (message.notSlop && t.verdict) t.letThrough = "not-slop";
+        if (!message.notSlop && t.letThrough === "not-slop") t.letThrough = undefined;
+        setNotSlop(t, message.notSlop, false);
         break;
       }
     }
@@ -282,42 +326,37 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   }
 
   function tabState(): TabState {
-    const all = [...posts.values()];
-    const judged = all.filter((t) => t.status === "done");
+    let pending = 0;
+    for (const t of posts.values()) if (t.status === "pending") pending++;
+    return { pending, broken: unreadable >= 5 && unreadable > readable };
+  }
+
+  /** Puts a checked post's entry in the side panel's list on the next send. */
+  function touched(t: Tracked) {
+    if (t.checkedAt !== undefined) unsent.add(t);
+    changed();
+  }
+
+  /** What the side panel's list keeps of a post. Only for checked ones. */
+  function checkedPost(t: Tracked): CheckedPost {
+    const { post } = t;
     return {
-      checked: judged.length,
-      pending: all.filter((t) => t.status === "pending").length,
-      hidden: all
-        .sort((a, b) => b.hiddenAt - a.hiddenAt)
-        .flatMap((t) => {
-          const { post, verdict } = t;
-          if (!verdict) return [];
-          const el = t.avatar ? undefined : elementsOf(t)[0];
-          if (el) t.avatar = site.avatar(el);
-          return [
-            {
-              id: post.id,
-              url: post.url,
-              handle: post.author.handle,
-              name: post.author.name,
-              // A porn bot's avatar is as explicit as its post.
-              avatar: verdict.category === "nsfw" ? undefined : t.avatar,
-              text: post.text.slice(0, 600),
-              category: verdict.category,
-              score: verdict.score,
-            },
-          ];
-        }),
-      hiddenAt: Object.fromEntries(
-        STRICTNESS.map((s) => [s, judged.filter((t) => verdictAt(t, s)).length]),
-      ) as Record<Strictness, number>,
-      broken: unreadable >= 5 && unreadable > readable,
+      ...judged(t),
+      id: post.id,
+      url: post.url,
+      name: post.author.name,
+      avatar: t.avatar,
+      text: post.text.slice(0, 600),
+      at: t.checkedAt!,
     };
   }
 
+  /** Sends what changed, a quarter-second's worth at a time. */
   function changed() {
-    stateTimer ??= setTimeout(() => {
-      stateTimer = undefined;
+    flushTimer ??= setTimeout(() => {
+      flushTimer = undefined;
+      if (unsent.size) void send({ type: "checked", posts: [...unsent].map(checkedPost) });
+      unsent.clear();
       void send({ type: "tab-state", state: tabState() });
     }, 250);
   }

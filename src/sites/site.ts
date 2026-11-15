@@ -13,4 +13,9 @@ export interface SiteAdapter {
   viewer(): string | null;
   /** The author's avatar URL, once the site has filled it in. */
   avatar(el: Element): string | undefined;
+  /**
+   * Calls `onChange` with lowercase handles and whether the reader follows each, as the site
+   * reveals them, starting with what it already has. Without it, nobody counts as followed.
+   */
+  watchFollows?(onChange: (follows: [handle: string, following: boolean][]) => void): void;
 }

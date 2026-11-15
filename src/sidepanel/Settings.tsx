@@ -1,6 +1,7 @@
+import type { HiddenPost } from "../core/checked.ts";
 import { USD_PER_MILLION_TOKENS } from "../core/decisions.ts";
 import { GOBLIN_GLYPH } from "../core/goblin.ts";
-import type { HiddenPost, Usage } from "../core/messages.ts";
+import type { Usage } from "../core/messages.ts";
 import { saveApiKey, updateSettings, type Settings as SettingsData } from "../core/settings.ts";
 import { CATEGORIES } from "../core/taxonomy.ts";
 import { ICONS, Icon, Segments, Switch } from "./controls.tsx";
@@ -19,8 +20,8 @@ const HIDE_MODES: Record<HideMode, { label: string; hint: string }> = {
   },
 };
 
-export function Settings(props: { settings: SettingsData; apiKey: string; hidden?: HiddenPost[] }) {
-  const { settings, apiKey } = props;
+export function Settings(props: { settings: SettingsData; apiKey: string; hidden: HiddenPost[] }) {
+  const { settings, apiKey, hidden } = props;
   const usage = useUsage();
 
   return (
@@ -32,7 +33,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
         <ul class="rows">
           {CATEGORIES.map((category) => {
             const on = settings.categories[category.id];
-            const here = props.hidden?.filter((p) => p.category === category.id).length;
+            const count = hidden.filter(({ verdict }) => verdict.category === category.id).length;
             const id = `category-${category.id}`;
             return (
               <li key={category.id}>
@@ -41,7 +42,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
                     <span class="row-title">{category.label}</span>
                     <span class="row-desc">{category.blurb}</span>
                   </span>
-                  {on && here ? <span class="row-count">{here} here</span> : null}
+                  {on && count ? <span class="row-count">{count} hidden</span> : null}
                   <Switch
                     id={id}
                     label={category.label}
@@ -83,6 +84,22 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
         <h2 id="trusted-title" class="section-title">
           Always show
         </h2>
+        <ul class="rows">
+          <li>
+            <label class={settings.trustFollowing ? "row" : "row is-off"} for="trust-following">
+              <span class="row-text">
+                <span class="row-title">People you follow</span>
+                <span class="row-desc">Never hidden or sent to Google</span>
+              </span>
+              <Switch
+                id="trust-following"
+                label="People you follow"
+                checked={settings.trustFollowing}
+                onChange={(trustFollowing) => void updateSettings(() => ({ trustFollowing }))}
+              />
+            </label>
+          </li>
+        </ul>
         {settings.trusted.length ? (
           <ul class="chips">
             {settings.trusted.map((handle) => (
@@ -123,7 +140,8 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
         {usage && <p class="hint">{describeUsage(usage)}</p>}
         <p class="hint">
           Posts you scroll past are sent to Google’s Gemini Decisions API with your key. Answers are
-          kept on this device for 30 days, so a post is only sent once.
+          kept on this device for 30 days, so a post is only sent once. Checked posts are kept in
+          memory for this panel until Chrome quits.
         </p>
       </section>
     </div>

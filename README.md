@@ -2,7 +2,7 @@
 
 A Chrome extension that hides AI slop, ragebait, clickbait, engagement bait, reply spam, NSFW posts, grifts and ads from your X feed. Each post is judged by Google's [Gemini Decisions API](https://aistudio.google.com/docs/decisions-api) with your own API key.
 
-Hidden posts collapse into a slim bar that says why. Click it to see the post. The side panel lists what's hidden in the current tab and shows how many posts each strictness would hide there. **Peek** (<kbd>Alt+Shift+P</kbd>) shows hidden posts in place with a label, so you can check the goblin's work.
+Hidden posts collapse into a slim bar that says why. Click it to see the post. The side panel lists what's been hidden lately, in every tab and across reloads, and shows how many of the posts checked each strictness would hide. Posts from people you follow are left alone. **Peek** (<kbd>Alt+Shift+P</kbd>) shows hidden posts in place with a label, so you can check the goblin's work.
 
 ## Setup
 
@@ -25,18 +25,24 @@ The toolchain is [Vite+](https://vite.plus): `vp` wraps Vite (build), Oxlint (li
 ## How it works
 
 ```
+page script (X's own page)
+ sites/x-follows.ts  who you follow
+        │ DOM events
+        ▼
 content script (x.com)            service worker                    Gemini
  sites/x.ts  reads posts   ──►    classifier.ts  cache + queue  ──►  Decisions API
  feed.ts     tracks them   ◄──    cache.ts       IndexedDB
- bar.ts      hides them
-        ▲
-        └── settings (chrome.storage.sync) ──► side panel (Preact)
+ bar.ts      hides them    ──►    checked.ts     the list ──► side panel (Preact)
+        ▲                                                         │
+        └──────────── settings (chrome.storage.sync) ◄────────────┘
 ```
 
 - **One multiple-choice question per post.** The model is asked which label fits best: one of the junk categories, or `fine`. It answers with a probability for every option. A post is hidden when the categories you have switched on add up to more than your strictness asks for (85%, 60% or 40%), and the bar names the likeliest one. Asking once, with `fine` spelled out as an option, is what keeps real posts in: separate yes/no questions per category each found something to object to in ordinary fan posts and replies.
 - **Community notes count as evidence.** When X shows a note under a post, or under the post it quotes, the note goes to the model too, along with whether other readers have rated it yet. A post that passes along something its note calls fake or bait is judged as junk of the same kind, unless it corrects it. A note that only adds context changes nothing. A note that turns up later changes the cache key, so the post is asked about again.
 - **About 8¢ per 1,000 posts.** A text post is about 630 input tokens and each image adds 280 (up to two are sent, at low resolution), which averages 840 on a real feed. Output is free. The free tier's 50,000 tokens a minute covers about 60 posts a minute; when it runs out, the posts on screen are checked first once it's back. The side panel's settings show the month's running total.
-- **Nothing is sent that couldn't be hidden.** Not your own posts, not posts from accounts you've marked "Always show", not the post a page is about, not ads (X marks those itself), and not posts you scrolled past before they finished loading.
+- **Nothing is sent that couldn't be hidden.** Not your own posts, not posts from people you follow or have marked "Always show", not the post a page is about, not ads (X marks those itself), and not posts you scrolled past before they finished loading. The rules for what's never hidden live in `core/policy.ts`, next to the ones for what is.
+- **Who you follow comes from X's own data.** Posts on the page don't say whether you follow their author, but the data X loads for them does. A small script in X's page (`sites/x-follows.ts`, loaded from `content/page.ts` before X's own scripts) reads X's API responses as they arrive and passes each author's handle and follow status, nothing else, to the content script. Ads from people you follow are still hidden, and the setting can be switched off.
+- **One list, from every tab.** The content script reports each post once it's checked, and the service worker keeps them in `chrome.storage.session` (`background/checked.ts`), newest 3,000. The side panel judges that list against the current settings, so the list, every count in the panel and the number on the toolbar icon agree. Letting a post through from the panel reaches every tab that has it, even if it was hidden in a tab since reloaded.
 - **Answers are cached, verdicts aren't.** IndexedDB keeps the probabilities for 30 days. Whether a post is hidden is decided locally by `core/policy.ts` from those and your settings, so changing strictness or categories applies instantly with no new requests.
 - **Rewording the question re-asks it.** Cached answers are stored under a hash of the question, its options and the input format (`core/decisions.ts`), so an edit to `core/taxonomy.ts` can't leave stale answers behind.
 - **Posts Google won't read count as NSFW.** Google's safety filters refuse some posts outright, and what they refuse is explicit or worse.
@@ -84,13 +90,13 @@ After moving a threshold, update `TRADEOFF` in `taxonomy.ts`, which is what the 
 
 ## Adding a site
 
-1. Implement `SiteAdapter` (`src/sites/site.ts`): find post elements, read one into a `Post`, and name the element to collapse. `src/sites/x.ts` is the reference.
+1. Implement `SiteAdapter` (`src/sites/site.ts`): find post elements, read one into a `Post`, and name the element to collapse. `src/sites/x.ts` is the reference. `watchFollows` is optional; it needs a part in the site's own page, listed in `IN_PAGE` in `src/content/page.ts`.
 2. Add it to `SITES` in `src/content/index.ts`.
-3. Add the site to `content_scripts.matches` and `host_permissions` in `public/manifest.json`.
+3. Add the site to both `content_scripts` entries' `matches` and to `host_permissions` in `public/manifest.json`.
 4. Generalize the X-specific copy: `QUESTION` in `src/core/taxonomy.ts`, the first line of `describePost` and the wording of `describeNote` in `src/core/decisions.ts`, and a few strings in the side panel.
 
 If most posts on a page can't be read, usually because the site changed its markup, the side panel says so instead of failing silently.
 
 ## Privacy
 
-The text of posts you scroll past (plus the post it replies to or quotes, any community note shown on either, link card text and up to two images) is sent to Google with your key. Nothing else leaves the browser. The key is kept in `chrome.storage.local`, and settings sync through your Chrome profile. Google may use what a free-tier key sends to improve its products.
+The text of posts you scroll past (plus the post it replies to or quotes, any community note shown on either, link card text and up to two images) is sent to Google with your key. Nothing else leaves the browser. The key is kept in `chrome.storage.local`, and settings sync through your Chrome profile. The side panel's list of checked posts is kept in `chrome.storage.session`, which lives in memory and is cleared when Chrome quits. The script in X's page reads only who you follow, and passes on only handles and follow status. Google may use what a free-tier key sends to improve its products.

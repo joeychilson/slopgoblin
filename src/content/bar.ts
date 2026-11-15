@@ -12,6 +12,8 @@ export type View =
       mode: "collapsed" | "revealed";
       id: string;
       author: Author;
+      /** Missing until the site has loaded it. */
+      avatar?: string;
       verdict: Verdict;
       /** Revealed by peek mode rather than by the user, so there's nothing to re-hide. */
       peek: boolean;
@@ -64,7 +66,7 @@ function row(view: Exclude<View, { mode: "shown" | "removed" }>) {
 
   if (view.mode === "collapsed") {
     // The author's faded avatar stands in for the post. A porn bot's avatar would defeat the point.
-    const mark = category === "nsfw" ? eyeOff() : el("span", "sg-ghost");
+    const mark = category === "nsfw" ? eyeOff() : ghost(view.avatar);
     return button("reveal", "sg-row", [
       el("span", "sg-slot", [mark]),
       el("span", "sg-what", [...why, ` from ${name}`]),
@@ -124,6 +126,13 @@ const eyeOff = () =>
     ],
     "sg-glyph",
   );
+
+/** A blank circle until the avatar has loaded. */
+function ghost(avatar: string | undefined) {
+  const node = el("span", "sg-ghost");
+  if (avatar) node.style.backgroundImage = `url(${JSON.stringify(avatar)})`;
+  return node;
+}
 
 /** In one color, so it takes the line's gray. */
 const goblin = () => glyph(GOBLIN_GLYPH.viewBox, [GOBLIN_GLYPH.d], "sg-goblin");

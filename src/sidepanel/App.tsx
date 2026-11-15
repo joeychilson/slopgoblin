@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
-import type { ServiceStatus, TabState } from "../core/messages.ts";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { hiddenAmong } from "../core/checked.ts";
+import type { ServiceStatus } from "../core/messages.ts";
 import { saveApiKey, updateSettings, type Settings as SettingsData } from "../core/settings.ts";
 import { ICONS, Icon, Switch } from "./controls.tsx";
 import { Den } from "./Den.tsx";
@@ -8,6 +9,7 @@ import { HiddenList } from "./HiddenList.tsx";
 import {
   useActiveTab,
   useApiKey,
+  useChecked,
   useSettings,
   useSiteTheme,
   useStatus,
@@ -27,15 +29,16 @@ export function App() {
   return <Main settings={settings} apiKey={apiKey} />;
 }
 
-type View = "tab" | "settings";
+type View = "home" | "settings";
 
 function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) {
   const status = useStatus();
   const tab = useActiveTab();
-  const [view, setView] = useState<View>("tab");
-  const state = settings.enabled ? tab?.state : undefined;
+  const checked = useChecked();
+  const hidden = useMemo(() => hiddenAmong(checked ?? [], settings), [checked, settings]);
+  const [view, setView] = useState<View>("home");
 
-  // Settings slides in from the right, and the tab view comes back from the left. Switching
+  // Settings slides in from the right, and home comes back from the left. Switching
   // also lands keyboard focus on the button that switches back.
   const switched = useRef(false);
   useEffect(() => {
@@ -52,13 +55,13 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
   const header =
     view === "settings" ? (
       <div class="top-row" key="settings">
-        <button type="button" class="icon-button" aria-label="Back" onClick={() => go("tab")}>
+        <button type="button" class="icon-button" aria-label="Back" onClick={() => go("home")}>
           <Icon d={ICONS.back} />
         </button>
         <h1 class="top-title">Settings</h1>
       </div>
     ) : (
-      <div class="top-row" key="tab">
+      <div class="top-row" key="home">
         <h1 class="wordmark">Slop Goblin</h1>
         <button
           type="button"
@@ -77,18 +80,25 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
     );
 
   return (
-    <Den header={header} goblin={<Lurker awake={settings.enabled} fed={state?.hidden.length} />}>
+    <Den header={header} goblin={<Lurker awake={settings.enabled} fed={hidden.length} />}>
       <div class="sheet-body" key={view} data-from={from}>
         {view === "settings" ? (
-          <Settings settings={settings} apiKey={apiKey} hidden={state?.hidden} />
+          <Settings settings={settings} apiKey={apiKey} hidden={hidden} />
         ) : (
-          <>
-            <Notice status={status} state={tab?.state} enabled={settings.enabled} />
-            <Summary tab={tab} settings={settings} />
-            {state && tab && state.hidden.length > 0 && (
-              <HiddenList key={tab.id} tabId={tab.id} hidden={state.hidden} peek={settings.peek} />
-            )}
-          </>
+          // Nothing until the list has loaded, so it doesn't flash "Nothing checked yet".
+          checked && (
+            <>
+              <Notice status={status} broken={tab?.state?.broken} enabled={settings.enabled} />
+              <Summary tab={tab} settings={settings} checked={checked} />
+              {hidden.length > 0 && (
+                <HiddenList
+                  hidden={hidden}
+                  tabId={tab?.state ? tab.id : undefined}
+                  peek={settings.peek}
+                />
+              )}
+            </>
+          )
         )}
       </div>
     </Den>
@@ -102,10 +112,10 @@ interface NoticeContent {
   action?: ComponentChildren;
 }
 
-function Notice(props: { status: ServiceStatus; state?: TabState | null; enabled: boolean }) {
-  const { status, state, enabled } = props;
+function Notice(props: { status: ServiceStatus; broken?: boolean; enabled: boolean }) {
+  const { status, broken = false, enabled } = props;
   const now = useTicker(status.kind === "rate-limited");
-  const notice = noticeFor(status, state, enabled, now);
+  const notice = noticeFor(status, broken, enabled, now);
   if (!notice) return null;
   return (
     <div
@@ -123,7 +133,8 @@ function Notice(props: { status: ServiceStatus; state?: TabState | null; enabled
 
 function noticeFor(
   status: ServiceStatus,
-  state: TabState | null | undefined,
+  /** The active tab's posts can't be read. */
+  broken: boolean,
   enabled: boolean,
   now: number,
 ): NoticeContent | null {
@@ -139,7 +150,7 @@ function noticeFor(
       ),
     };
   }
-  if (state?.broken) {
+  if (broken) {
     return {
       title: "Can't read posts on this page",
       body: "X probably changed its layout. Posts stay visible until Slop Goblin is updated.",

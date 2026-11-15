@@ -1,7 +1,20 @@
 import { defineConfig } from "vite-plus";
 
-// Chrome loads content scripts as classic scripts, so the content script gets
-// its own IIFE build. The side panel and the (module) service worker share chunks.
+// Chrome loads content scripts as classic scripts, so each one gets its own IIFE
+// build: the content script, and the page script that runs in the site's own world.
+// The side panel and the (module) service worker share chunks.
+const classicScript = (name: string, input: string) => ({
+  consumer: "client" as const,
+  build: {
+    emptyOutDir: false,
+    copyPublicDir: false,
+    rolldownOptions: {
+      input: { [name]: input },
+      output: { format: "iife" as const, entryFileNames: "[name].js" },
+    },
+  },
+});
+
 export default defineConfig({
   root: "src",
   publicDir: "../public",
@@ -23,17 +36,8 @@ export default defineConfig({
         },
       },
     },
-    content: {
-      consumer: "client",
-      build: {
-        emptyOutDir: false,
-        copyPublicDir: false,
-        rolldownOptions: {
-          input: { content: "src/content/index.ts" },
-          output: { format: "iife", entryFileNames: "[name].js" },
-        },
-      },
-    },
+    content: classicScript("content", "src/content/index.ts"),
+    page: classicScript("page", "src/content/page.ts"),
   },
   // Builds every environment, not just the client.
   builder: {},

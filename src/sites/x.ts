@@ -1,5 +1,6 @@
 import type { Post, ReaderNote } from "../core/post.ts";
 import type { SiteAdapter } from "./site.ts";
+import { watchFollows } from "./x-follows.ts";
 
 // X's class names are generated; data-testid attributes are the stable hooks.
 const SEL = {
@@ -27,6 +28,9 @@ const MEDIA =
 
 type Reply = NonNullable<Post["replyTo"]>;
 
+/** The profile link isn't in every layout X has, so the last one seen stands in. */
+let lastViewer: string | null = null;
+
 export const x: SiteAdapter = {
   findPosts: () => [...document.querySelectorAll(SEL.post)],
 
@@ -34,11 +38,15 @@ export const x: SiteAdapter = {
 
   container: (el) => el.closest<HTMLElement>(SEL.cell),
 
-  viewer: () => handleFrom(document.querySelector(SEL.viewer)?.getAttribute("href")),
+  viewer: () =>
+    (lastViewer =
+      handleFrom(document.querySelector(SEL.viewer)?.getAttribute("href")) ?? lastViewer),
 
   // The first avatar is the author's; a quoted post's comes later.
   avatar: (el) =>
     el.querySelector(SEL.avatar)?.querySelector("img")?.getAttribute("src") ?? undefined,
+
+  watchFollows,
 
   readPost(el) {
     const own = ownParts(el);

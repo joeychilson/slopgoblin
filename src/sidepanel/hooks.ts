@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { CHECKED_PREFIX, type CheckedPost } from "../core/checked.ts";
 import {
   STATUS_KEY,
   THEME_KEY,
@@ -60,6 +61,39 @@ export function useUsage() {
     return watchStorage<Usage>("local", USAGE_KEY, show);
   }, []);
   return usage;
+}
+
+/** Every post checked since Chrome started, in any tab, newest first and kept live. Undefined while loading. */
+export function useChecked() {
+  const [checked, setChecked] = useState<CheckedPost[]>();
+  useEffect(() => {
+    const posts = new Map<string, CheckedPost>();
+    let loaded = false;
+    const publish = () => loaded && setChecked([...posts.values()].sort((a, b) => b.at - a.at));
+
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== "session") return;
+      let touched = false;
+      for (const [key, { newValue }] of Object.entries(changes)) {
+        if (!key.startsWith(CHECKED_PREFIX)) continue;
+        touched = true;
+        if (newValue) posts.set(key, newValue as CheckedPost);
+        else posts.delete(key);
+      }
+      if (touched) publish();
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    void chrome.storage.session.get(null).then((all) => {
+      // Anything changed while this loaded is newer than what it read.
+      for (const [key, value] of Object.entries(all)) {
+        if (key.startsWith(CHECKED_PREFIX) && !posts.has(key)) posts.set(key, value as CheckedPost);
+      }
+      loaded = true;
+      publish();
+    });
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, []);
+  return checked;
 }
 
 /** Dresses the panel in the same light, dim or dark as the site, once a page has said which. */

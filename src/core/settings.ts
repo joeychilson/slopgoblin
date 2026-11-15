@@ -10,6 +10,8 @@ export interface Settings {
   peek: boolean;
   /** Lowercase handles that are never hidden. */
   trusted: string[];
+  /** Accounts the reader follows are never hidden either, apart from their ads. */
+  trustFollowing: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -22,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideMode: "collapse",
   peek: false,
   trusted: [],
+  trustFollowing: true,
 };
 
 const KEY = "settings";

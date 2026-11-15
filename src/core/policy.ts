@@ -9,29 +9,54 @@ export interface Verdict {
   score: number;
 }
 
+/** What a post's verdict rests on: the model's answer, and what's known about who posted it. */
+export interface Judged {
+  scores: Scores;
+  isAd: boolean;
+  handle: string;
+  /** The reader let it through. */
+  notSlop?: boolean;
+  /** The reader follows its author. Undefined until the site has said. */
+  followed?: boolean;
+}
+
 /**
  * Decides whether a post is hidden. Pure, so settings changes re-apply instantly
  * from cached scores without asking the model again.
  */
-export function judge(
-  {
-    scores,
-    isAd,
-    handle,
-    notSlop,
-  }: { scores: Scores; isAd: boolean; handle: string; notSlop?: boolean },
-  settings: Settings,
-): Verdict | null {
-  if (!settings.enabled || notSlop || settings.trusted.includes(handle.toLowerCase())) return null;
-  if (isAd && settings.categories.ad) return { category: "ad", score: 1 };
+export function judge(post: Judged, settings: Settings): Verdict | null {
+  if (!settings.enabled || post.notSlop || alwaysShown(post, settings)) return null;
+  // X marks ads itself. Following an account doesn't make its ads welcome.
+  if (post.isAd) return settings.categories.ad ? { category: "ad", score: 1 } : null;
+  if (shownAsFollowed(post, settings)) return null;
 
   let score = 0;
   let top: { id: CategoryId; p: number } | undefined;
   for (const { id } of CATEGORIES) {
-    const p = scores[id];
+    const p = post.scores[id];
     if (p === undefined || !settings.categories[id]) continue;
     score += p;
     if (!top || p > top.p) top = { id, p };
   }
   return top && score >= THRESHOLD[settings.strictness] ? { category: top.id, score } : null;
 }
+
+/**
+ * Whether the model's answer could change anything. Ads are marked by the site, and some authors
+ * are never hidden, so none of those are sent to Google.
+ */
+export function needsScores(post: Omit<Judged, "scores">, settings: Settings) {
+  return (
+    settings.enabled &&
+    !post.isAd &&
+    !alwaysShown(post, settings) &&
+    !shownAsFollowed(post, settings) &&
+    CATEGORIES.some((c) => "describes" in c && settings.categories[c.id])
+  );
+}
+
+const alwaysShown = ({ handle }: { handle: string }, settings: Settings) =>
+  settings.trusted.includes(handle.toLowerCase());
+
+const shownAsFollowed = ({ followed }: { followed?: boolean }, settings: Settings) =>
+  settings.trustFollowing && followed === true;

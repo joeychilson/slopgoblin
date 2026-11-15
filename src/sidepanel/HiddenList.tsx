@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { HiddenPost } from "../core/messages.ts";
+import type { HiddenPost } from "../core/checked.ts";
+import type { RuntimeMessage } from "../core/messages.ts";
 import { displayName } from "../core/post.ts";
 import { updateSettings } from "../core/settings.ts";
 import { CATEGORY, THRESHOLD, inSentence } from "../core/taxonomy.ts";
@@ -12,16 +13,21 @@ const LEAVE_MS = 240;
 const OPEN_MS = 320;
 
 /**
- * Everything hidden in this tab, newest first: who posted it, why it went, and what it says.
- * Clicking one opens it in place, with the whole text and what can be done about it; one is
- * open at a time. Rows there when the panel opens arrive one after another; later ones slide
+ * Everything hidden lately, in any tab, newest first: who posted it, why it went, and what it
+ * says. Clicking one opens it in place, with the whole text and what can be done about it; one
+ * is open at a time. Rows there when the panel opens arrive one after another; later ones slide
  * in at the top.
  */
-export function HiddenList(props: { tabId: number; hidden: HiddenPost[]; peek: boolean }) {
+export function HiddenList(props: {
+  hidden: HiddenPost[];
+  /** The active tab, when Slop Goblin runs in it: a post still on that page is shown there. */
+  tabId?: number;
+  peek: boolean;
+}) {
   const { tabId, hidden } = props;
   const [open, setOpen] = useState<string | null>(null);
   const firstIds = useRef<string[] | null>(null);
-  firstIds.current ??= hidden.map((post) => post.id);
+  firstIds.current ??= hidden.map(({ post }) => post.id);
   return (
     <section class="hidden" aria-labelledby="hidden-title">
       <div class="list-head">
@@ -29,14 +35,14 @@ export function HiddenList(props: { tabId: number; hidden: HiddenPost[]; peek: b
         <Peek on={props.peek} />
       </div>
       <ul class="list" onKeyDown={(event) => event.key === "Escape" && setOpen(null)}>
-        {hidden.map((post) => (
+        {hidden.map((item) => (
           <Item
-            key={post.id}
-            post={post}
+            key={item.post.id}
+            item={item}
             tabId={tabId}
-            order={Math.min(firstIds.current!.indexOf(post.id), 10)}
-            open={open === post.id}
-            onToggle={(next) => setOpen(next ? post.id : null)}
+            order={Math.min(firstIds.current!.indexOf(item.post.id), 10)}
+            open={open === item.post.id}
+            onToggle={(next) => setOpen(next ? item.post.id : null)}
           />
         ))}
       </ul>
@@ -62,21 +68,22 @@ function Peek({ on }: { on: boolean }) {
 }
 
 function Item(props: {
-  post: HiddenPost;
-  tabId: number;
+  item: HiddenPost;
+  tabId?: number;
   order: number;
   open: boolean;
   onToggle: (open: boolean) => void;
 }) {
-  const { post, tabId, order, open, onToggle } = props;
+  const { item, tabId, order, open, onToggle } = props;
+  const { post, verdict } = item;
   const [leaving, setLeaving] = useState(false);
   const row = useRef<HTMLLIElement>(null);
-  const isAd = post.category === "ad";
-  const isNsfw = post.category === "nsfw";
-  const label = isAd ? "Ad" : CATEGORY[post.category].label;
+  const isAd = verdict.category === "ad";
+  const isNsfw = verdict.category === "nsfw";
+  const label = isAd ? "Ad" : CATEGORY[verdict.category].label;
   const name = displayName(post);
   // The same words as the feed.
-  const maybe = post.score < THRESHOLD.balanced;
+  const maybe = verdict.score < THRESHOLD.balanced;
   const why = maybe ? `Possibly ${inSentence(label)}` : label;
   const actionsId = `actions-${post.id}`;
 
@@ -91,15 +98,25 @@ function Item(props: {
   }, [open]);
 
   async function showInFeed() {
-    const found = await sendToTab<boolean>(tabId, { type: "reveal", id: post.id });
+    const found =
+      tabId !== undefined && (await sendToTab<boolean>(tabId, { type: "reveal", id: post.id }));
     if (!found) await chrome.tabs.create({ url: post.url });
   }
 
-  // The row folds away first, then the feed is told, which takes it off the list.
+  // The row folds away first. Then the service worker is told, which takes it off the list and
+  // lets it through in every tab that has it.
   function letThrough() {
     onToggle(false);
     setLeaving(true);
-    setTimeout(() => void sendToTab(tabId, { type: "not-slop", id: post.id }), LEAVE_MS);
+    setTimeout(
+      () =>
+        void chrome.runtime.sendMessage<RuntimeMessage>({
+          type: "not-slop",
+          id: post.id,
+          notSlop: true,
+        }),
+      LEAVE_MS,
+    );
   }
 
   function trust() {

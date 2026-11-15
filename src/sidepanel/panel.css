@@ -9,106 +9,53 @@
  *
  * Motion has two speeds: `--spring` overshoots a little, for things that move to a new place
  * (the chosen pill, switch knobs); `--glide` settles, for things arriving, leaving or opening.
+ *
+ * Every color is a token below with its light and dark value. The site's theme picks which.
  */
 :root {
-  color-scheme: light;
-  --ground: #547b1d;
-  --on-ground: #f5f8ec;
-  --on-ground-muted: rgb(245 248 236 / 0.72);
-  --on-ground-hover: rgb(255 255 255 / 0.14);
-  --ground-track: rgb(255 255 255 / 0.26);
-  --ground-switch: #c4de85;
-  --goblin-hi: #a6de44;
-  --goblin-mid: #6ca620;
-  --goblin-lo: #41680f;
-  --goblin-deep: #264007;
-  --goblin-rim: #e2fc9a;
-  --goblin-outline: #1b2e06;
-  --goblin-hand-shadow: rgb(9 17 2 / 0.2);
-  --sheet: #fbfaf3;
-  --ink: #1b2412;
-  --ink-2: #3a4531;
-  --muted: #5d6952;
-  --faint: #949f87;
-  --well: rgb(38 52 18 / 0.07);
-  --well-strong: rgb(38 52 18 / 0.11);
-  --hover: rgb(38 52 18 / 0.045);
-  --accent: #4c7018;
-  --fill: #547b1d;
-  --on-fill: #f5f8ec;
-  --track: rgb(38 52 18 / 0.2);
-  --knob: #ffffff;
-  --danger: #b4321f;
+  color-scheme: light dark;
+  --ground: light-dark(#547b1d, #1f2d11);
+  --on-ground: light-dark(#f5f8ec, #edf2e4);
+  --on-ground-muted: light-dark(rgb(245 248 236 / 0.72), rgb(237 242 228 / 0.66));
+  --on-ground-hover: light-dark(rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.08));
+  --ground-track: light-dark(rgb(255 255 255 / 0.26), rgb(255 255 255 / 0.16));
+  --ground-switch: light-dark(#c4de85, #93b84e);
+  --goblin-hi: light-dark(#a6de44, #a8df46);
+  --goblin-mid: light-dark(#6ca620, #6fa922);
+  --goblin-lo: light-dark(#41680f, #436c10);
+  --goblin-deep: light-dark(#264007, #274207);
+  --goblin-rim: light-dark(#e2fc9a, #dcfa8e);
+  --goblin-outline: light-dark(#1b2e06, #111d03);
+  --goblin-hand-shadow: light-dark(rgb(9 17 2 / 0.2), rgb(0 0 0 / 0.48));
+  --sheet: light-dark(#fbfaf3, #12170e);
+  --ink: light-dark(#1b2412, #edf2e4);
+  --ink-2: light-dark(#3a4531, #c3cbb7);
+  --muted: light-dark(#5d6952, #a0aa93);
+  --faint: light-dark(#949f87, #6c775f);
+  --well: light-dark(rgb(38 52 18 / 0.07), rgb(255 255 255 / 0.06));
+  --well-strong: light-dark(rgb(38 52 18 / 0.11), rgb(255 255 255 / 0.1));
+  --hover: light-dark(rgb(38 52 18 / 0.045), rgb(255 255 255 / 0.04));
+  --accent: light-dark(#4c7018, #a6c564);
+  --fill: light-dark(#547b1d, #93b84e);
+  --on-fill: light-dark(#f5f8ec, #132006);
+  --track: light-dark(rgb(38 52 18 / 0.2), rgb(255 255 255 / 0.16));
+  --knob: light-dark(#ffffff, #f5f8ec);
+  --danger: light-dark(#b4321f, #ff8b78);
   --display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
   --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --spring: cubic-bezier(0.3, 1.3, 0.5, 1);
   --glide: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* X's dim and lights out both get the dark den, where the goblin is lighter than the ground. */
+/* The site's theme wins over the system's. X's dim and lights out both get the dark den, where
+   the goblin is lighter than the ground. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 :root[data-theme="dim"],
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #1f2d11;
-  --on-ground: #edf2e4;
-  --on-ground-muted: rgb(237 242 228 / 0.66);
-  --on-ground-hover: rgb(255 255 255 / 0.08);
-  --ground-track: rgb(255 255 255 / 0.16);
-  --ground-switch: #93b84e;
-  --goblin-hi: #a8df46;
-  --goblin-mid: #6fa922;
-  --goblin-lo: #436c10;
-  --goblin-deep: #274207;
-  --goblin-rim: #dcfa8e;
-  --goblin-outline: #111d03;
-  --goblin-hand-shadow: rgb(0 0 0 / 0.48);
-  --sheet: #12170e;
-  --ink: #edf2e4;
-  --ink-2: #c3cbb7;
-  --muted: #a0aa93;
-  --faint: #6c775f;
-  --well: rgb(255 255 255 / 0.06);
-  --well-strong: rgb(255 255 255 / 0.1);
-  --hover: rgb(255 255 255 / 0.04);
-  --accent: #a6c564;
-  --fill: #93b84e;
-  --on-fill: #132006;
-  --track: rgb(255 255 255 / 0.16);
-  --knob: #f5f8ec;
-  --danger: #ff8b78;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    color-scheme: dark;
-    --ground: #1f2d11;
-    --on-ground: #edf2e4;
-    --on-ground-muted: rgb(237 242 228 / 0.66);
-    --on-ground-hover: rgb(255 255 255 / 0.08);
-    --ground-track: rgb(255 255 255 / 0.16);
-    --ground-switch: #93b84e;
-    --goblin-hi: #a8df46;
-    --goblin-mid: #6fa922;
-    --goblin-lo: #436c10;
-    --goblin-deep: #274207;
-    --goblin-rim: #dcfa8e;
-    --goblin-outline: #111d03;
-    --goblin-hand-shadow: rgb(0 0 0 / 0.48);
-    --sheet: #12170e;
-    --ink: #edf2e4;
-    --ink-2: #c3cbb7;
-    --muted: #a0aa93;
-    --faint: #6c775f;
-    --well: rgb(255 255 255 / 0.06);
-    --well-strong: rgb(255 255 255 / 0.1);
-    --hover: rgb(255 255 255 / 0.04);
-    --accent: #a6c564;
-    --fill: #93b84e;
-    --on-fill: #132006;
-    --track: rgb(255 255 255 / 0.16);
-    --knob: #f5f8ec;
-    --danger: #ff8b78;
-  }
 }
 
 * {

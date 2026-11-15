@@ -17,6 +17,10 @@ export interface PostContent {
   images?: string[];
 }
 
+/** The display name, unless it's all symbols and emoji, as plenty are. */
+export const displayName = ({ name, handle }: { name: string; handle: string }) =>
+  /[\p{L}\p{N}]/u.test(name) ? name : `@${handle}`;
+
 export interface Post extends PostContent {
   /** Site-scoped stable id, e.g. "x:1857304412". */
   id: string;

@@ -1,5 +1,6 @@
+import { GOBLIN_GLYPH } from "../core/goblin.ts";
 import type { Verdict } from "../core/policy.ts";
-import type { Post } from "../core/post.ts";
+import { displayName, type Post } from "../core/post.ts";
 import { CATEGORY, THRESHOLD, inSentence } from "../core/taxonomy.ts";
 
 type Author = Post["author"];
@@ -44,70 +45,88 @@ export function renderCell(cell: HTMLElement, view: View) {
 }
 
 function row(view: Exclude<View, { mode: "shown" | "removed" }>) {
-  const name = nameOf(view.author);
+  const name = displayName(view.author);
   if (view.mode === "confirmed") {
     const message =
       view.action === "trust"
-        ? `Posts from ${name} will always show.`
-        : "Got it. This post won't be hidden again.";
-    return el("div", "sg-row", [
-      el("span", "", message),
-      el("span", "sg-actions", [button("undo", "sg-link sg-primary", "Undo")]),
-    ]);
+        ? `Posts from ${name} will always show`
+        : "This post won't be hidden again";
+    return context(message, [], button("undo", "sg-link sg-primary", "Undo"));
   }
 
   const { category, score } = view.verdict;
   const label = category === "ad" ? "Ad" : CATEGORY[category].label;
+  // Only Strict hides posts the model is this unsure about.
+  const why =
+    score < THRESHOLD.balanced
+      ? ["Possibly ", el("strong", "", inSentence(label))]
+      : [el("strong", "", label)];
+
   if (view.mode === "collapsed") {
     // The author's faded avatar stands in for the post. A porn bot's avatar would defeat the point.
     const mark = category === "nsfw" ? eyeOff() : el("span", "sg-ghost");
-    // Only Strict hides posts the model is this unsure about.
-    const what =
-      score < THRESHOLD.balanced
-        ? ["Possibly ", el("strong", "", inSentence(label)), ` from ${name}`]
-        : [el("strong", "", label), ` from ${name}`];
     return button("reveal", "sg-row", [
       el("span", "sg-slot", [mark]),
-      el("span", "sg-what", what),
+      el("span", "sg-what", [...why, ` from ${name}`]),
       el("span", "sg-show", "Show"),
     ]);
   }
 
-  const actions: Node[] = [];
-  if (category !== "ad") {
-    actions.push(
-      button("not-slop", "sg-link", `Not ${inSentence(label)}`),
-      button("trust", "sg-link", `Always show ${name}`),
-    );
-  }
-  if (!view.peek) actions.push(button("hide", "sg-link sg-primary", "Hide"));
-  const why = category === "ad" ? [label] : [label, `, ${Math.round(score * 100)}% sure`];
-  return el("div", "sg-row", [
-    el("span", "", [el("strong", "", why[0]!), ...why.slice(1)]),
-    el("span", "sg-actions", actions),
-  ]);
+  const letThrough =
+    category === "ad"
+      ? []
+      : [
+          button("not-slop", "sg-link", `Not ${inSentence(label)}`),
+          button("trust", "sg-link", `Always show ${name}`),
+        ];
+  // Hide sits where Show was, so the reader can flip a post back and forth.
+  return context(
+    why,
+    letThrough,
+    view.peek ? undefined : button("hide", "sg-link sg-primary", "Hide"),
+  );
 }
 
-/** The display name, unless it's all symbols and emoji, as plenty are. */
-const nameOf = ({ name, handle }: Author) => (/[\p{L}\p{N}]/u.test(name) ? name : `@${handle}`);
+/**
+ * A line above the post: a small goblin lined up with the avatar's left edge, then the words.
+ * The post itself sits right under it.
+ */
+function context(what: string | (string | Node)[], more: Node[], primary?: HTMLElement) {
+  const words = typeof what === "string" ? [what] : what;
+  const parts = [el("span", "sg-what", [goblin(), ...words])];
+  if (more.length) parts.push(el("span", "sg-more", more));
+  if (primary) parts.push(primary);
+  return el("div", "sg-context", parts);
+}
 
-function eyeOff() {
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("class", "sg-glyph");
+const SVG = "http://www.w3.org/2000/svg";
+
+function glyph(viewBox: string, paths: string[], className: string) {
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("viewBox", viewBox);
+  svg.setAttribute("class", className);
   svg.setAttribute("aria-hidden", "true");
-  for (const d of [
-    "M9.9 5.7A9 9 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 0 1-2 2.8M6.6 6.6C3.9 8.3 2.5 12 2.5 12s3.5 6.5 9.5 6.5a9 9 0 0 0 5.4-1.9",
-    "M9.9 9.9a3 3 0 0 0 4.2 4.2",
-    "M3 3l18 18",
-  ]) {
-    const path = document.createElementNS(ns, "path");
+  for (const d of paths) {
+    const path = document.createElementNS(SVG, "path");
     path.setAttribute("d", d);
     svg.append(path);
   }
   return svg;
 }
+
+const eyeOff = () =>
+  glyph(
+    "0 0 24 24",
+    [
+      "M9.9 5.7A9 9 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 0 1-2 2.8M6.6 6.6C3.9 8.3 2.5 12 2.5 12s3.5 6.5 9.5 6.5a9 9 0 0 0 5.4-1.9",
+      "M9.9 9.9a3 3 0 0 0 4.2 4.2",
+      "M3 3l18 18",
+    ],
+    "sg-glyph",
+  );
+
+/** In one color, so it takes the line's gray. */
+const goblin = () => glyph(GOBLIN_GLYPH.viewBox, [GOBLIN_GLYPH.d], "sg-goblin");
 
 function el(tag: string, className: string, content: string | (string | Node)[] = []) {
   const node = document.createElement(tag);
@@ -117,7 +136,7 @@ function el(tag: string, className: string, content: string | (string | Node)[] 
   return node;
 }
 
-function button(action: BarAction, className: string, content: string | Node[]) {
+function button(action: BarAction, className: string, content: string | (string | Node)[]) {
   const node = el("button", className, content);
   node.setAttribute("type", "button");
   node.dataset.sgAction = action;

@@ -58,13 +58,17 @@ There are two kinds of test post, in the same format (`eval/LABELING.md`):
 - `eval/posts.jsonl` has 303 written to order, among them hard negatives (strong opinions, real breaking news, people sharing their own work) and prompt-injection attempts.
 - `eval/real/*.jsonl` holds posts collected from a real timeline, reply threads and spam-prone searches, with their images. Those are other people's posts, so the folder is gitignored; put your own there. Real posts are what the wording should be tuned on. The written ones are easier than a real feed and flatter every design.
 
-With the current wording, on 674 real posts and the 303 written ones (850 with a firm label):
+With the current wording, on 801 real posts and the 303 written ones. Each cell is real posts hidden by mistake / junk caught, counting only posts with a firm label:
 
-|          | real posts hidden by mistake | junk caught      |
-| -------- | ---------------------------- | ---------------- |
-| Relaxed  | 0 of 595                     | 200 of 255 (78%) |
-| Balanced | 3 of 595 (0.5%)              | 243 of 255 (95%) |
-| Strict   | 16 of 595 (2.7%)             | 250 of 255 (98%) |
+| posts from                 | real | junk | Relaxed | Balanced | Strict  |
+| -------------------------- | ---- | ---- | ------- | -------- | ------- |
+| a timeline                 | 207  | 26   | 0 / 18  | 1 / 25   | 5 / 26  |
+| a later timeline, held out | 100  | 15   | 0 / 7   | 1 / 13   | 5 / 14  |
+| reply threads              | 221  | 12   | 0 / 2   | 0 / 9    | 7 / 11  |
+| spam-prone searches        | 16   | 69   | 0 / 60  | 1 / 69   | 3 / 69  |
+| written to order           | 151  | 148  | 0 / 120 | 1 / 140  | 1 / 144 |
+
+The held-out timeline was collected after the wording was frozen and labeled in one pass, so it's a sanity check rather than a benchmark; it agrees with the first. On the three sets that look like everyday reading (both timelines and the replies), Balanced hides 2 of 528 real posts and catches 47 of 53 junk ones, Strict hides 17 and catches 51, and Relaxed hides none and catches 27. What gets through at Balanced is mostly borderline: clips behind a vague caption that might be a fan's, and generic-sounding replies.
 
 Two things learned the hard way, before changing the wording:
 

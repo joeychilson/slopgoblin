@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Slop Goblin",
+  "version": "0.1.0",
+  "description": "Hides AI slop, ragebait, clickbait, engagement bait, reply spam, NSFW posts, grifts and ads from your X feed.",
+  "homepage_url": "https://slopgoblin.app",
+  "minimum_chrome_version": "123",
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": { "default_title": "Slop Goblin" },
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*"],
+      "js": ["page.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://x.com/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "permissions": ["storage", "sidePanel"],
+  "host_permissions": ["https://generativelanguage.googleapis.com/*", "https://x.com/*"],
+  "commands": {
+    "toggle-peek": {
+      "suggested_key": { "default": "Alt+Shift+P" },
+      "description": "Peek at hidden posts"
+    }
+  }
+}

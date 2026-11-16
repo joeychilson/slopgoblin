@@ -1,0 +1,27 @@
+{
+  "name": "slopgoblin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp build --watch",
+    "eval": "node --env-file-if-exists=.env.local eval/run.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "preact": "^11.2.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.7",
+    "@types/node": "^26.6.6",
+    "typescript": "~7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.18.0",
+      "onFail": "download"
+    }
+  }
+}

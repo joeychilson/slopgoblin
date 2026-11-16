@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in Slop Goblin doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a post that was judged wrong, use the "Wrong call" form instead. Report a security problem privately, as [SECURITY.md](https://github.com/joeychilson/slopgoblin/blob/main/SECURITY.md) says.
+  - type: input
+    id: version
+    attributes:
+      label: Slop Goblin version
+      description: As chrome://extensions shows it.
+    validations:
+      required: true
+  - type: input
+    id: chrome
+    attributes:
+      label: Chrome version
+      description: As chrome://version shows it.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, and on which X page.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: >-
+        Paste any error as it was. The side panel's errors are in its console (right-click the
+        panel, Inspect); the service worker's are under "Inspect views" on chrome://extensions.
+        Leave out your API key.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true

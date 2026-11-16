@@ -162,6 +162,6 @@ panel says so instead of failing silently.
 2. Merge to `main`, then tag that commit `v<version>` and push the tag.
 3. The Release workflow checks the tag, runs the checks, builds, and publishes a GitHub
    release with `slopgoblin-<version>.zip`.
-4. Upload that zip in the
-   [Chrome Web Store dashboard](https://chrome.google.com/webstore/devconsole).
+4. In the [Chrome Web Store dashboard](https://chrome.google.com/webstore/devconsole), upload
+   that zip as a new package and submit it for review.
    [chrome-web-store.md](chrome-web-store.md) has the listing and its answers.

@@ -34,13 +34,10 @@ to see the post.
 
 Slop Goblin needs Chrome 123 or later.
 
-1. Download `slopgoblin-<version>.zip` from the
-   [latest release](https://github.com/joeychilson/slopgoblin/releases/latest)
-   and unzip it.
-2. Open `chrome://extensions`, turn on **Developer mode**, click **Load
-   unpacked** and pick the unzipped folder.
-3. Click Slop Goblin's toolbar icon to open the side panel, and paste a key
-   from [Google AI Studio](https://aistudio.google.com/apikey).
+1. Add it from the
+   [Chrome Web Store](https://chromewebstore.google.com/detail/slop-goblin/chfckcjkfehffpammliepgeehalndggk).
+2. Click the goblin in Chrome's extensions menu to open the side panel, and
+   paste a key from [Google AI Studio](https://aistudio.google.com/apikey).
 
 ## What it costs
 

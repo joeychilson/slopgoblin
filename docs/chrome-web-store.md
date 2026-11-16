@@ -3,6 +3,9 @@
 What the [developer dashboard](https://chrome.google.com/webstore/devconsole) asks for, ready
 to paste. Upload the zip from the GitHub release ([Releasing](development.md#releasing)).
 
+The [listing](https://chromewebstore.google.com/detail/slop-goblin/chfckcjkfehffpammliepgeehalndggk)'s
+item ID is `chfckcjkfehffpammliepgeehalndggk`.
+
 ## Account
 
 - **Publisher name:** Joey Chilson. It shows under "Offered by" on the listing.

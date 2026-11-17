@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
 - **Relaxed and Strict are better trades.** Relaxed now catches about 2 in 3 junk posts, up
   from about half, and still hid no real post in testing. Strict hides about 1 real post in

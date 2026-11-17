@@ -22,19 +22,20 @@ export const FINE =
   "A normal post or reply. News; opinions and criticism about politics, public figures or events, even harsh or partisan ones; jokes and memes; fans reacting to a team, player, show or artist; sports banter; personal updates; someone's own work; real questions. A reply that reacts to its parent post, however short: congratulations, thanks, agreement, disagreement, an insult, a joke.";
 
 /** Minimum probability of junk to hide a post. Tuned with `vp run eval`. */
-export const THRESHOLD: Record<Strictness, number> = { relaxed: 0.85, balanced: 0.6, strict: 0.4 };
+export const THRESHOLD: Record<Strictness, number> = { relaxed: 0.75, balanced: 0.6, strict: 0.5 };
 
 export const STRICTNESS = Object.keys(THRESHOLD) as Strictness[];
 
 /**
  * What each strictness costs, in a few words, as `vp run eval` measures it on timelines and
- * reply threads: Relaxed catches about half the junk and hid no real post, Balanced about 9 in
- * 10 and 1 real post in 200, Strict nearly all and 1 in 30. Re-measure after moving a threshold.
+ * reply threads: Relaxed catches about 2 in 3 junk posts and hid no real post, Balanced about
+ * 9 in 10 and 1 real post in 200, Strict nearly all and 1 in 100. Re-measure after moving a
+ * threshold.
  */
 export const TRADEOFF: Record<Strictness, string> = {
   relaxed: "Hides only the obvious junk.",
   balanced: "Hides most junk, rarely a real post.",
-  strict: "Hides nearly all junk, some real posts too.",
+  strict: "Hides nearly all junk, and a few real posts.",
 };
 
 export const CATEGORIES = [

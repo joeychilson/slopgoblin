@@ -20,9 +20,9 @@ import {
   questionKey,
   type Scores,
 } from "../src/core/decisions.ts";
-import { judge } from "../src/core/policy.ts";
+import { REFUSED, judge } from "../src/core/policy.ts";
 import type { PostContent } from "../src/core/post.ts";
-import { DEFAULT_SETTINGS } from "../src/core/settings.ts";
+import { DEFAULT_SETTINGS, type Settings } from "../src/core/settings.ts";
 import {
   CATEGORIES,
   STRICTNESS,
@@ -101,7 +101,7 @@ await runPool(missing, 8, async (row) => {
       if (error.kind !== "blocked") throw error;
       // The extension hides what Google's safety filter refuses to read, so the eval does too.
       console.warn(`${row.id}: blocked by the safety filter`);
-      cache[cacheKey(row)] = { scores: { nsfw: 1 }, tokens: 0 };
+      cache[cacheKey(row)] = { scores: REFUSED, tokens: 0 };
     }
     // Saved as answers arrive, so an interrupted run doesn't pay for them again.
     writeFileSync(cachePath, JSON.stringify(cache));
@@ -110,17 +110,24 @@ await runPool(missing, 8, async (row) => {
 });
 
 const answerFor = (row: Row) => cache[cacheKey(row)]!;
-const verdict = (row: Row, strictness: Strictness) =>
-  judge(
-    { scores: answerFor(row).scores, isAd: false, handle: row.author.handle },
-    { ...DEFAULT_SETTINGS, strictness },
-  );
+
+/** The default settings at a strictness, with only the categories `on` picks switched on. */
+const settingsAt = (
+  strictness: Strictness,
+  on: (id: CategoryId) => boolean = () => true,
+): Settings => ({
+  ...DEFAULT_SETTINGS,
+  strictness,
+  categories: Object.fromEntries(CATEGORIES.map((c) => [c.id, on(c.id)])) as Settings["categories"],
+});
+const verdict = (row: Row, settings: Settings) =>
+  judge({ scores: answerFor(row).scores, isAd: false, handle: row.author.handle }, settings);
 
 const firm = (rows: Row[]) => rows.filter((row) => !row.unsure);
 const clean = (rows: Row[]) => firm(rows).filter((row) => !row.labels.length);
 const junk = (rows: Row[]) => firm(rows).filter((row) => row.labels.length);
-const hidden = (rows: Row[], strictness: Strictness) =>
-  rows.filter((row) => verdict(row, strictness)).length;
+const hidden = (rows: Row[], settings: Settings) =>
+  rows.filter((row) => verdict(row, settings)).length;
 
 const cell = (value: string | number, width: number) => String(value).padStart(width);
 const levelHeads = STRICTNESS.map((s) => `${s} ≥${THRESHOLD[s]}`.padStart(15)).join("  ");
@@ -133,7 +140,8 @@ console.log(
 const total = { name: "all", rows: all };
 for (const { name, rows } of sets.length > 1 ? [...sets, total] : sets) {
   const cells = STRICTNESS.map(
-    (s) => `${cell(hidden(clean(rows), s), 9)}${cell(hidden(junk(rows), s), 8)}`,
+    (s) =>
+      `${cell(hidden(clean(rows), settingsAt(s)), 9)}${cell(hidden(junk(rows), settingsAt(s)), 8)}`,
   );
   console.log(
     `${name.padEnd(14)}${cell(clean(rows).length, 6)}${cell(junk(rows).length, 6)}${cells.join("")}`,
@@ -148,13 +156,31 @@ for (const category of CATEGORIES) {
   if (!("describes" in category)) continue;
   const labeled = junk(all).filter((row) => row.labels.includes(category.id));
   const caught = labeled.flatMap((row) => {
-    const hit = verdict(row, "balanced");
+    const hit = verdict(row, settingsAt("balanced"));
     return hit ? [row.labels.includes(hit.category)] : [];
   });
   const named = caught.filter(Boolean).length;
   console.log(
-    `${category.id.padEnd(17)}${cell(labeled.length, 6)}${STRICTNESS.map((s) => cell(hidden(labeled, s), 10)).join("")}${cell(`${named}/${caught.length}`, 10)}`,
+    `${category.id.padEnd(17)}${cell(labeled.length, 6)}${STRICTNESS.map((s) => cell(hidden(labeled, settingsAt(s)), 10)).join("")}${cell(`${named}/${caught.length}`, 10)}`,
   );
+}
+
+// The switches, at Balanced: a reader who keeps only one category, or switches one off. Of
+// the junk they still want hidden, how much is; and how many posts they asked to see are
+// hidden anyway: real ones, and junk only of the kinds switched off.
+console.log(
+  `\n${"switches".padEnd(17)}${cell("only this on", 16)}${cell("this off", 16)}\n${"".padEnd(17)}${cell("caught", 10)}${cell("wrong", 6)}${cell("caught", 10)}${cell("wrong", 6)}`,
+);
+const switched = (settings: Settings) => {
+  const wanted = (row: Row) => row.labels.some((label) => settings.categories[label]);
+  const want = firm(all).filter(wanted);
+  const rest = firm(all).filter((row) => !wanted(row));
+  return `${cell(`${hidden(want, settings)}/${want.length}`, 10)}${cell(hidden(rest, settings), 6)}`;
+};
+for (const { id } of CATEGORIES.filter((c) => "describes" in c)) {
+  const alone = settingsAt("balanced", (c) => c === id);
+  const off = settingsAt("balanced", (c) => c !== id);
+  console.log(`${id.padEnd(17)}${switched(alone)}${switched(off)}`);
 }
 
 const tokens = all.map((row) => answerFor(row).tokens).filter(Boolean);
@@ -180,8 +206,8 @@ if (flag !== -1) {
     if (row.note) lines.push(`  note: ${row.note}`);
     return lines.join("\n");
   };
-  const wrong = clean(all).filter((row) => verdict(row, level));
-  const missed = junk(all).filter((row) => !verdict(row, level));
+  const wrong = clean(all).filter((row) => verdict(row, settingsAt(level)));
+  const missed = junk(all).filter((row) => !verdict(row, settingsAt(level)));
   console.log(`\nHidden at ${level}, should have stayed (${wrong.length}):\n`);
   console.log(wrong.map(describe).join("\n\n"));
   console.log(`\nJunk that got through at ${level} (${missed.length}):\n`);

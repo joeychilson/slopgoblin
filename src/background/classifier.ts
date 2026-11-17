@@ -1,6 +1,6 @@
 import { DecisionError, decide, questionKey, type Scores } from "../core/decisions.ts";
 import type { ClassifyResponse } from "../core/messages.ts";
-import { needsScores } from "../core/policy.ts";
+import { REFUSED, needsScores } from "../core/policy.ts";
 import type { Post } from "../core/post.ts";
 import { loadSettings } from "../core/settings.ts";
 import { store, thisMonth, type ServiceStatus } from "../core/storage.ts";
@@ -53,14 +53,13 @@ async function run(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
     if (cachedOnly) return { uncached: true };
     const answer = await ask(post);
     if (answer === "unavailable") return { unavailable: true };
-    const blocked = answer === "blocked";
+    const scores = answer === "blocked" ? REFUSED : answer;
     // Read again: the reader may have let the post through while it waited for an answer.
     const { notSlop } = (await getEntry(post.id)) ?? {};
-    entry = { id: post.id, key, scores: blocked ? {} : answer, blocked, notSlop, seen: 0 };
+    entry = { id: post.id, key, scores, notSlop, seen: 0 };
   }
   await putEntry({ ...entry, seen: Date.now() });
-  // Google's safety filters refuse to read some posts at all. What they refuse is explicit or worse.
-  return { scores: entry.blocked ? { nsfw: 1 } : entry.scores, notSlop: Boolean(entry.notSlop) };
+  return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
 }
 
 async function ask(post: Post): Promise<Scores | "blocked" | "unavailable"> {

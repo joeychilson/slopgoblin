@@ -33,9 +33,11 @@ content script (x.com)            service worker                    Gemini
 - **One multiple-choice question per post.** The model is asked which label fits best: one
   of the junk categories, or `fine`. It answers with a probability for every option. A post
   is hidden when the categories you have switched on add up to more than your strictness asks
-  for (85%, 60% or 40%), and the bar names the likeliest one. Asking once, with `fine` spelled
+  for (75%, 60% or 50%), and the bar names the likeliest one. Asking once, with `fine` spelled
   out as an option, is what keeps real posts in: separate yes/no questions per category each
-  found something to object to in ordinary fan posts and replies.
+  found something to object to in ordinary fan posts and replies. The cost is that a post
+  that's several kinds has its chance split between them, so switching a kind off also shows
+  posts that are mostly that kind.
 - **Community notes count as evidence.** When X shows a note under a post, or under the post
   it quotes, the note goes to the model too, along with whether other readers have rated it
   yet. A post that passes along something its note calls fake or bait is judged as junk of the
@@ -66,8 +68,8 @@ content script (x.com)            service worker                    Gemini
   Whether a post is hidden is decided locally by `core/policy.ts` from those and your
   settings, so changing strictness or categories applies instantly with no new requests.
 - **Rewording the question re-asks it.** Cached answers are stored under a hash of the
-  question, its options and the input format (`core/decisions.ts`), so an edit to
-  `core/taxonomy.ts` can't leave stale answers behind.
+  model, every question exactly as it's sent, and the input format (`core/decisions.ts`), so
+  an edit to `core/taxonomy.ts` can't leave stale answers behind.
 - **Posts Google won't read count as NSFW.** Google's safety filters refuse some posts
   outright, and what they refuse is explicit or worse.
 - **Everything stored is in one place.** `core/storage.ts` lists what's kept in
@@ -76,10 +78,11 @@ content script (x.com)            service worker                    Gemini
 
 ## Tuning the filter
 
-The question, the description of each option and the probability each strictness needs live
-in `src/core/taxonomy.ts`. The eval sends labeled posts through the same code the extension
-runs and reports, per strictness, how many real posts were hidden by mistake and how much
-junk was caught:
+The questions, the description of each option and the probability each strictness needs
+live in `src/core/taxonomy.ts`. The eval sends labeled posts through the same code the
+extension runs and reports, per strictness, how many real posts were hidden by mistake and
+how much junk was caught. It also reports what a reader gets with only one category switched
+on, or one switched off:
 
 ```sh
 echo "GEMINI_API_KEY=…" > .env.local
@@ -89,11 +92,13 @@ vp run eval --misses strict    # …or at another strictness
 ```
 
 Answers are cached in `eval/.cache.json`, so a rerun only pays for posts whose question
-changed. The model is deterministic: the same request gets the same probabilities.
+changed. The model is deterministic: the same request gets the same probabilities. Google
+fetches images afresh each time, though, so a few posts with images come back a little
+different from one run to the next (8 of 1,244 the last time).
 
 There are two kinds of test post, in the same format (`eval/LABELING.md`):
 
-- `eval/posts.jsonl` has 324 written to order, among them hard negatives (strong opinions,
+- `eval/posts.jsonl` has 326 written to order, among them hard negatives (strong opinions,
   real breaking news, people sharing their own work, real posts under a community note) and
   prompt-injection attempts.
 - `eval/real/*.jsonl` holds posts collected from a real timeline, reply threads, spam-prone
@@ -102,24 +107,24 @@ There are two kinds of test post, in the same format (`eval/LABELING.md`):
   wording should be tuned on. The written ones are easier than a real feed and flatter every
   design.
 
-With the current wording, on 918 real posts and the 324 written ones. Each cell is real posts
+With the current wording, on 918 real posts and the 326 written ones. Each cell is real posts
 hidden by mistake / junk caught, counting only posts with a firm label:
 
 | posts from                 | real | junk | Relaxed | Balanced | Strict  |
 | -------------------------- | ---- | ---- | ------- | -------- | ------- |
-| a timeline                 | 207  | 26   | 0 / 18  | 1 / 25   | 5 / 26  |
-| a later timeline, held out | 100  | 15   | 0 / 7   | 1 / 13   | 5 / 14  |
-| reply threads              | 221  | 12   | 0 / 2   | 0 / 9    | 7 / 11  |
-| spam-prone searches        | 16   | 69   | 0 / 60  | 1 / 69   | 3 / 69  |
-| posts with a note          | 4    | 13   | 0 / 11  | 1 / 13   | 2 / 13  |
-| posts quoting those        | 17   | 41   | 0 / 8   | 0 / 24   | 0 / 32  |
-| written to order           | 170  | 150  | 0 / 122 | 1 / 142  | 1 / 146 |
+| a timeline                 | 207  | 26   | 0 / 22  | 1 / 25   | 3 / 26  |
+| a later timeline, held out | 100  | 15   | 0 / 9   | 1 / 12   | 1 / 14  |
+| reply threads              | 221  | 12   | 0 / 4   | 0 / 9    | 1 / 10  |
+| spam-prone searches        | 16   | 69   | 0 / 68  | 1 / 69   | 2 / 69  |
+| posts with a note          | 4    | 13   | 0 / 12  | 1 / 13   | 1 / 13  |
+| posts quoting those        | 17   | 41   | 0 / 16  | 0 / 24   | 0 / 28  |
+| written to order           | 171  | 151  | 0 / 136 | 1 / 143  | 1 / 147 |
 
 The held-out timeline was collected after the wording was frozen and labeled in one pass, so
 it's a sanity check rather than a benchmark; it agrees with the first. On the three sets that
 look like everyday reading (both timelines and the replies), Balanced hides 2 of 528 real
-posts and catches 47 of 53 junk ones, Strict hides 17 and catches 51, and Relaxed hides none
-and catches 27. What gets through at Balanced is mostly borderline: clips behind a vague
+posts and catches 46 of 53 junk ones, Strict hides 5 and catches 50, and Relaxed hides none
+and catches 35. What gets through at Balanced is mostly borderline: clips behind a vague
 caption that might be a fan's, and generic-sounding replies.
 
 The notes are what the last two real sets measure. With the notes left out of the input,
@@ -127,13 +132,22 @@ Balanced catches 8 of those 13 noted posts instead of all 13, and 5 of the 41 po
 them instead of 24. Both sets are small and were labeled in one pass, and 36 of the 94
 quoting posts were too short or ambiguous to label at all.
 
-Two things learned the hard way, before changing the wording:
+Things learned the hard way, before changing the wording:
 
 - The long descriptions earn their tokens. The examples inside `fine` (fans reacting to a team
   or artist, short replies that react to their parent) are what stopped real fan posts being
   read as clickbait. Terser options were measurably worse.
 - The first line of the input, which says a post follows to be judged, also keeps Google's
   word filter from refusing posts over a slur they contain.
+- Questions in one request sway each other, whatever Google's docs say. Adding a yes/no per
+  category beside the main question moved its answer for 529 of 1,244 posts. Asked in a
+  request of their own, with each category's description, those yes/no questions did catch
+  more junk for a reader with one category on (322 of 480 instead of 229), but also hid 81
+  posts that reader wanted to see instead of 4, most of them junk of the kinds switched off.
+  The categories overlap too much on content-farm posts for per-category questions to keep
+  them apart.
+- Telling the model which image is a video's first frame hid 6 more real video posts at
+  Balanced, and caught no more junk.
 
 After moving a threshold, update `TRADEOFF` in `taxonomy.ts`, which is what the side panel
 tells people each strictness costs, and the numbers in the README.

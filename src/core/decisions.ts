@@ -4,7 +4,7 @@ import { CATEGORIES, FINE, QUESTION, type CategoryId } from "./taxonomy.ts";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/decisions";
 const MODEL = "gemini-decision-1";
 /** Bump when `describePost` changes meaningfully, so cached scores get recomputed. */
-const INPUT_VERSION = 2;
+const INPUT_VERSION = 3;
 const MAX_IMAGES = 2;
 const TIMEOUT_MS = 30_000;
 /** Input tokens are all the Decisions API bills for. */
@@ -19,10 +19,27 @@ const OPTIONS = CATEGORIES.flatMap((c) =>
 
 const optionsFor = (isReply: boolean) => OPTIONS.filter((o) => isReply || !o.repliesOnly);
 
-const keyFor = (isReply: boolean) =>
-  hash([INPUT_VERSION, QUESTION, FINE, ...optionsFor(isReply).map((o) => o.describes)].join("|"));
-const POST_KEY = keyFor(false);
-const REPLY_KEY = keyFor(true);
+/**
+ * The question a post or a reply is asked, in the API's own form. One question only: questions
+ * in a request do sway each other's answers, whatever the docs say.
+ */
+function questionsFor(isReply: boolean) {
+  const options = optionsFor(isReply);
+  return {
+    kind: {
+      type: "choice",
+      instructions: QUESTION,
+      criteria: { fine: FINE, ...Object.fromEntries(options.map((o) => [o.id, o.describes])) },
+    },
+  };
+}
+
+const QUESTIONS = { post: questionsFor(false), reply: questionsFor(true) };
+// Everything the model is asked, down to the option keys it reads, so no change can leave stale
+// answers behind.
+const keyFor = (questions: object) => hash(JSON.stringify([MODEL, INPUT_VERSION, questions]));
+const POST_KEY = keyFor(QUESTIONS.post);
+const REPLY_KEY = keyFor(QUESTIONS.reply);
 
 /**
  * Fingerprints the question a post gets asked. A cached answer under another key is stale.
@@ -56,7 +73,7 @@ export async function decide(
   withImages = true,
 ): Promise<{ scores: Scores; tokens: number }> {
   const images = withImages ? (post.images ?? []).slice(0, MAX_IMAGES) : [];
-  const options = optionsFor(Boolean(post.replyTo));
+  const isReply = Boolean(post.replyTo);
   const body = {
     model: MODEL,
     input: [
@@ -68,13 +85,7 @@ export async function decide(
         resolution: "low",
       })),
     ],
-    questions: {
-      kind: {
-        type: "choice",
-        instructions: QUESTION,
-        criteria: { fine: FINE, ...Object.fromEntries(options.map((o) => [o.id, o.describes])) },
-      },
-    },
+    questions: isReply ? QUESTIONS.reply : QUESTIONS.post,
   };
 
   let res: Response;
@@ -91,18 +102,15 @@ export async function decide(
   }
   if (!res.ok) throw await toDecisionError(res, images.length > 0);
 
+  // A post Google's safety filters won't read comes back as an error, in `toDecisionError`.
   const json = (await res.json()) as {
     answers?: { kind?: { probabilities?: Record<string, number> } };
     usage?: { total_input_tokens?: number };
-    prompt_feedback?: { block_reason?: string };
   };
   const probabilities = json.answers?.kind?.probabilities;
-  if (!probabilities) {
-    const reason = json.prompt_feedback?.block_reason;
-    throw new DecisionError(reason ? "blocked" : "fatal", reason ?? "Gemini gave no answer");
-  }
+  if (!probabilities) throw new DecisionError("fatal", "Gemini gave no answer");
   return {
-    scores: Object.fromEntries(options.map((o) => [o.id, probabilities[o.id] ?? 0])),
+    scores: Object.fromEntries(optionsFor(isReply).map((o) => [o.id, probabilities[o.id] ?? 0])),
     tokens: json.usage?.total_input_tokens ?? 0,
   };
 }
@@ -145,8 +153,9 @@ function describeNote(note: ReaderNote, target: string) {
 }
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
+/** Wraps text from the site. A tag inside it is defused, so it can't close this one early. */
 const tag = (name: string, text: string, max: number) =>
-  `<${name}>\n${clip(text, max)}\n</${name}>`;
+  `<${name}>\n${clip(text, max).replace(/<(\/?\w+)>/g, "‹$1›")}\n</${name}>`;
 
 function imageMime(uri: string): string {
   const url = new URL(uri);

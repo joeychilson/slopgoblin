@@ -13,8 +13,8 @@ content script and the side panel have no automated tests.
   `core/policy.ts`; how a verdict reads, by `reason` there. What's stored, and where, is in
   `core/storage.ts`. Everything site-specific is in `src/sites/`.
 - **Measure before rewording the model's question.** `QUESTION`, `FINE` and the categories'
-  `describes` in `core/taxonomy.ts`, and `describePost` in `core/decisions.ts`, are tuned with
-  `vp run eval`. Any change to them re-asks every cached post.
+  ids and `describes` in `core/taxonomy.ts`, and `describePost` in `core/decisions.ts`, are
+  tuned with `vp run eval`. Any change to them re-asks every cached post.
 - **No real people's posts in the repo.** `eval/real/` is gitignored for that.
 - **Plain wording** in everything the reader sees: short sentences, no filler, the same word
   for the same thing.

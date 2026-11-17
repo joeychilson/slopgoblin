@@ -41,6 +41,8 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
   if (post.isAd) return settings.categories.ad ? { category: "ad", score: 1 } : null;
   if (shownAsFollowed(post, settings)) return null;
 
+  // A post that's several kinds has its chance split between them, so switching one kind off
+  // also shows posts that are mostly that kind.
   let score = 0;
   let top: { id: CategoryId; p: number } | undefined;
   for (const { id } of CATEGORIES) {
@@ -51,6 +53,9 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
   }
   return top && score >= THRESHOLD[settings.strictness] ? { category: top.id, score } : null;
 }
+
+/** Google's safety filters refuse to read some posts at all. What they refuse is explicit or worse. */
+export const REFUSED: Scores = { nsfw: 1 };
 
 /**
  * Whether the model's answer could change anything. Ads are marked by the site, some authors

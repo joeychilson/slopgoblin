@@ -5,9 +5,8 @@ interface Entry {
   id: string;
   /** The `questionKey` the scores answer. Rewording the question makes them stale. */
   key: string;
+  /** `REFUSED` for a post the API's safety filter wouldn't read, so it isn't sent again. */
   scores: Scores;
-  /** Rejected by the API's safety filter; never resent. */
-  blocked?: boolean;
   notSlop?: boolean;
   seen: number;
 }

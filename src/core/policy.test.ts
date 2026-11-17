@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { judge, needsScores, type Judged } from "./policy.ts";
+import { REFUSED, judge, needsScores, type Judged } from "./policy.ts";
 import { DEFAULT_SETTINGS, type Settings } from "./settings.ts";
 
 const post = (over: Partial<Judged> = {}): Judged => ({
@@ -28,6 +28,11 @@ describe("judge", () => {
     expect(judge(post(), settings({ strictness: "strict", categories: only("ragebait") }))).toEqual(
       { category: "ragebait", score: 0.5 },
     );
+  });
+
+  it("counts a post Google refused to read as NSFW", () => {
+    expect(judge(post({ scores: REFUSED }), settings())).toEqual({ category: "nsfw", score: 1 });
+    expect(judge(post({ scores: REFUSED }), settings({ categories: only("ragebait") }))).toBeNull();
   });
 
   it("hides nothing while filtering is off or once the reader let a post through", () => {

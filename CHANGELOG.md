@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+- **Relaxed and Strict are better trades.** Relaxed now catches about 2 in 3 junk posts, up
+  from about half, and still hid no real post in testing. Strict hides about 1 real post in
+  100 by mistake, down from 1 in 30, and still catches nearly all junk. Balanced is unchanged.
+- **A post can't dress its own text up as a community note** to talk its way past the goblin.
+- **Posts already checked are checked once more** after updating, since saved answers are now
+  tied to the exact question and model they came from.
+
 ## 0.1.0
 
 The first release.

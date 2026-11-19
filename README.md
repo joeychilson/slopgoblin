@@ -60,6 +60,7 @@ vp build       # into dist/, for Load unpacked
 vp run dev     # rebuild on change
 vp check       # format, lint and type check
 vp test
+vp run e2e     # the extension in Chromium, on a mock X page
 ```
 
 [docs/development.md](docs/development.md) has how it works, how the filter

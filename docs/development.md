@@ -5,12 +5,19 @@ pnpm install
 vp build          # into dist/
 vp run dev        # rebuild on change
 vp check          # format, lint and type check
-vp test           # the rules for what's hidden
+vp test           # unit tests: what's hidden, and what's sent to Google
+vp run e2e        # the extension in Chromium, on a mock X page
 ```
 
 Load `dist/` with **Load unpacked** on `chrome://extensions` (Developer mode on), and hit
 the extension's reload button after each build. A tab that was open before a reload has to be
 reloaded too; the side panel offers to.
+
+`vp run e2e` builds, then loads `dist/` into headless Chromium with Playwright and runs it on a
+mock X timeline, with X's API and the Decisions API mocked (`e2e/`). That's the content script,
+the service worker and the side panel together, which the unit tests can't reach. The first
+time, install the browser: `vp exec playwright install chromium`. The mock page is X as
+`sites/x.ts` reads it, so only x.com shows whether X has changed its markup.
 
 The toolchain is [Vite+](https://viteplus.dev): `vp` wraps Vite (build), Vitest (test),
 Oxlint (lint, type-aware), Oxfmt (format) and TypeScript.

@@ -5,7 +5,7 @@ import { CATEGORIES, CATEGORY, THRESHOLD, type CategoryId } from "./taxonomy.ts"
 export interface Verdict {
   /** The likeliest of the categories switched on. */
   category: CategoryId;
-  /** The probability the post is in any category switched on. */
+  /** The probability the post is junk, of any kind. */
   score: number;
 }
 
@@ -41,17 +41,23 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
   if (post.isAd) return settings.categories.ad ? { category: "ad", score: 1 } : null;
   if (shownAsFollowed(post, settings)) return null;
 
-  // A post that's several kinds has its chance split between them, so switching one kind off
-  // also shows posts that are mostly that kind.
+  // A post that's several kinds has its chance split between them. It's hidden when it's junk
+  // and at least half of that is kinds switched on, so switching a kind off shows the posts that
+  // are mostly that kind, and only those.
   let score = 0;
+  let on = 0;
   let top: { id: CategoryId; p: number } | undefined;
   for (const { id } of CATEGORIES) {
     const p = post.scores[id];
-    if (p === undefined || !settings.categories[id]) continue;
+    if (p === undefined) continue;
     score += p;
+    if (!settings.categories[id]) continue;
+    on += p;
     if (!top || p > top.p) top = { id, p };
   }
-  return top && score >= THRESHOLD[settings.strictness] ? { category: top.id, score } : null;
+  return top && score >= THRESHOLD[settings.strictness] && on >= score / 2
+    ? { category: top.id, score }
+    : null;
 }
 
 /** Google's safety filters refuse to read some posts at all. What they refuse is explicit or worse. */

@@ -15,19 +15,24 @@ const only = (...on: string[]) =>
   ) as Settings["categories"];
 
 describe("judge", () => {
-  it("hides when the categories switched on add up to the strictness", () => {
+  it("hides junk at the strictness, named for its likeliest kind", () => {
     expect(judge(post(), settings())).toEqual({ category: "ragebait", score: 0.7 });
     expect(judge(post(), settings({ strictness: "relaxed" }))).toBeNull();
   });
 
-  it("leaves categories switched off out of the sum and the reason", () => {
-    expect(judge(post(), settings({ categories: only("ragebait") }))).toBeNull();
+  it("hides a post only when at least half of it is kinds switched on", () => {
+    expect(judge(post(), settings({ categories: only("ragebait") }))).toEqual({
+      category: "ragebait",
+      score: 0.7,
+    });
     expect(
       judge(post(), settings({ strictness: "strict", categories: only("clickbait", "nsfw") })),
     ).toBeNull();
-    expect(judge(post(), settings({ strictness: "strict", categories: only("ragebait") }))).toEqual(
-      { category: "ragebait", score: 0.5 },
-    );
+    const even = post({ scores: { ragebait: 0.4, clickbait: 0.4 } });
+    expect(judge(even, settings({ categories: only("clickbait") }))).toEqual({
+      category: "clickbait",
+      score: 0.8,
+    });
   });
 
   it("counts a post Google refused to read as NSFW", () => {

@@ -25,30 +25,32 @@ const POSTS: MockPost[] = [
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Reads until `ok` or 10 seconds pass, and returns the last read. */
-async function until<T>(read: () => Promise<T>, ok: (value: T) => boolean = Boolean) {
-  let value = await read();
-  for (const end = Date.now() + 10_000; !ok(value) && Date.now() < end; value = await read()) {
-    await sleep(100);
-  }
-  return value;
-}
+/** Retries an assertion for up to 10 seconds. */
+const poll = <T>(read: () => T) => expect.poll(read, { timeout: 10_000 });
 
-/** How a post is shown, and what its bar says, once it's shown as `want`. */
-function look(x: Page, handle: string, want = "shown") {
-  const read = () =>
-    x.$eval(`[data-testid="cellInnerDiv"]:has(a[href="/${handle}"])`, (cell) => ({
-      sg: (cell as HTMLElement).dataset.sg ?? "shown",
-      bar: cell.querySelector<HTMLElement>(".sg-bar")?.innerText.replace(/\s+/g, " ") ?? "",
-    }));
-  return until(read, ({ sg }) => sg === want);
-}
+const cellOf = (handle: string) => `[data-testid="cellInnerDiv"]:has(a[href="/${handle}"])`;
 
-const click = (x: Page, handle: string, target: string) =>
-  x.click(`[data-testid="cellInnerDiv"]:has(a[href="/${handle}"]) ${target}`);
+/** How a post is shown, and what its bar says. */
+const state = (x: Page, handle: string) =>
+  x.$eval(cellOf(handle), (cell) => ({
+    sg: (cell as HTMLElement).dataset.sg ?? "shown",
+    bar: cell.querySelector<HTMLElement>(".sg-bar")?.innerText.replace(/\s+/g, " ") ?? "",
+  }));
+
+/** Waits for a post to be shown as `sg`, with a bar that matches `bar`. */
+const shows = (x: Page, handle: string, sg: string, bar = /^/) =>
+  poll(() => state(x, handle)).toMatchObject({ sg, bar: expect.stringMatching(bar) });
+
+const click = (x: Page, handle: string, target: string) => x.click(`${cellOf(handle)} ${target}`);
 
 const append = (x: Page, html: string) =>
   x.evaluate((html) => document.querySelector("main")!.insertAdjacentHTML("beforeend", html), html);
+
+/** X shows a post again, now under the post it replies to. */
+async function underParent(x: Page, parent: MockPost, reply: MockPost) {
+  await x.locator(cellOf(reply.handle)).evaluate((el) => el.remove());
+  await append(x, cell({ ...parent, thread: true }) + cell(reply));
+}
 
 const handleIn = (text: string) => text.match(/^Author: .* \(@(\w+)\)$/m)?.[1];
 
@@ -65,24 +67,28 @@ describe("on X", { timeout: 30_000 }, () => {
   afterAll(() => m.ctx.close());
 
   it("hides junk, with a bar that says why", async () => {
-    expect((await look(x, "rager", "collapsed")).bar).toMatch(/^Ragebait from Rage Farm/);
-    expect((await look(x, "noted", "collapsed")).bar).toMatch(/^AI slop from Noted News/);
-    expect((await look(x, "brand", "collapsed")).bar).toMatch(/^Ad from Big Brand/);
+    await shows(x, "rager", "collapsed", /^Ragebait from Rage Farm/);
+    await shows(x, "noted", "collapsed", /^AI slop from Noted News/);
+    await shows(x, "brand", "collapsed", /^Ad from Big Brand/);
     // A name that's all emoji gives way to the handle, and a porn bot's avatar isn't shown.
-    expect((await look(x, "nsfwbot", "collapsed")).bar).toMatch(/^NSFW from @nsfwbot/);
+    await shows(x, "nsfwbot", "collapsed", /^NSFW from @nsfwbot/);
     expect(await x.locator(".sg-bar:has-text('@nsfwbot') .sg-ghost").count()).toBe(0);
     for (const handle of ["alice", "maybe", "friend", "me", "replier"]) {
-      expect(await look(x, handle), handle).toMatchObject({ sg: "shown" });
+      await shows(x, handle, "shown");
     }
   });
 
   it("asks only about posts it could hide, once each", async () => {
     // Not the reader's own, not people they follow, not ads.
-    const asked = await until(
-      async () => m.sent.map(handleIn).sort((a = "", b = "") => a.localeCompare(b)),
-      (h) => h.length >= 7,
-    );
-    expect(asked).toEqual(["alice", "maybe", "noted", "nsfwbot", "rager", "replier", "slopper"]);
+    await poll(() => m.sent.map(handleIn).sort((a = "", b = "") => a.localeCompare(b))).toEqual([
+      "alice",
+      "maybe",
+      "noted",
+      "nsfwbot",
+      "rager",
+      "replier",
+      "slopper",
+    ]);
     const noted = m.sent.find((text) => handleIn(text) === "noted");
     expect(noted).toMatch(/Readers added this community note to the post:\n<note>\nAI-made/);
   });
@@ -107,28 +113,30 @@ describe("on X", { timeout: 30_000 }, () => {
 
   it("lets a post through from its bar, and takes it back", async () => {
     await click(x, "rager", ".sg-row");
-    expect((await look(x, "rager", "revealed")).bar).toMatch(/Not ragebait Always show Rage Farm/);
+    await shows(x, "rager", "revealed", /Not ragebait Always show Rage Farm/);
     await click(x, "rager", "[data-sg-action=not-slop]");
-    expect((await look(x, "rager", "confirmed")).bar).toMatch(/won't be hidden again/);
+    await shows(x, "rager", "confirmed", /won't be hidden again/);
     await click(x, "rager", "[data-sg-action=undo]");
-    await look(x, "rager", "revealed");
+    await shows(x, "rager", "revealed");
     await click(x, "rager", "[data-sg-action=hide]");
-    expect((await look(x, "rager", "collapsed")).sg).toBe("collapsed");
+    await shows(x, "rager", "collapsed");
   });
 
   it("always shows an author, and takes it back", async () => {
     await click(x, "slopper", ".sg-row");
     await click(x, "slopper", "[data-sg-action=trust]");
-    expect((await look(x, "slopper", "confirmed")).bar).toMatch(/Growth Guru will always show/);
+    await shows(x, "slopper", "confirmed", /Growth Guru will always show/);
     expect((await settings(m.sw)).trusted).toEqual(["slopper"]);
     await click(x, "slopper", "[data-sg-action=undo]");
-    expect((await look(x, "slopper", "revealed")).sg).toBe("revealed");
+    await shows(x, "slopper", "revealed");
     expect((await settings(m.sw)).trusted).toEqual([]);
     // Trusted again from elsewhere: shown, without the line confirming it.
     await settings(m.sw, { trusted: ["slopper"] });
-    const trusted = await look(x, "slopper");
-    await settings(m.sw, { trusted: [] });
-    expect(trusted).toEqual({ sg: "shown", bar: "" });
+    try {
+      await shows(x, "slopper", "shown", /^$/);
+    } finally {
+      await settings(m.sw, { trusted: [] });
+    }
   });
 
   it("ignores a bar a script fakes", async () => {
@@ -147,78 +155,98 @@ describe("on X", { timeout: 30_000 }, () => {
   it("applies settings to the answers it has, without asking again", async () => {
     const asked = m.sent.length;
     await settings(m.sw, { strictness: "strict" });
-    expect((await look(x, "maybe", "collapsed")).bar).toMatch(/^Possibly clickbait/);
+    await shows(x, "maybe", "collapsed", /^Possibly clickbait/);
     await settings(m.sw, { strictness: "balanced", peek: true });
-    expect((await look(x, "nsfwbot", "revealed")).bar).not.toMatch(/Hide/);
+    await shows(x, "nsfwbot", "revealed");
+    expect((await state(x, "nsfwbot")).bar).not.toMatch(/Hide/);
     await settings(m.sw, { peek: false, hideMode: "remove" });
-    await look(x, "rager", "removed");
+    await shows(x, "rager", "removed");
     await settings(m.sw, { hideMode: "collapse", categories: { ragebait: false } });
-    await look(x, "rager");
+    await shows(x, "rager", "shown");
     await settings(m.sw, { categories: {}, enabled: false });
-    expect((await look(x, "nsfwbot")).sg).toBe("shown");
+    await shows(x, "nsfwbot", "shown");
     await settings(m.sw, { enabled: true });
-    expect((await look(x, "rager", "collapsed")).sg).toBe("collapsed");
+    await shows(x, "rager", "collapsed");
     expect(m.sent.length).toBe(asked);
   });
 
   it("answers from its cache after a reload", async () => {
     const asked = m.sent.length;
     await x.reload();
-    expect((await look(x, "rager", "collapsed")).sg).toBe("collapsed");
+    await shows(x, "rager", "collapsed");
     await sleep(1500);
     expect(m.sent.length).toBe(asked);
   });
 
   it("asks again when the post a reply answers turns up", async () => {
-    const parent = { id: "200", handle: "newsdesk", name: "News", text: "Big news.", thread: true };
-    await x.evaluate(() =>
-      document.querySelector('[data-testid="cellInnerDiv"]:has(a[href="/replier"])')!.remove(),
+    const replier = POSTS.find((p) => p.handle === "replier")!;
+    await underParent(
+      x,
+      { id: "200", handle: "newsdesk", name: "News", text: "Big news." },
+      replier,
     );
-    await append(x, cell(parent) + cell(POSTS.find((p) => p.handle === "replier")!));
-    expect((await look(x, "replier", "collapsed")).bar).toMatch(/^Reply spam from Reply Guy/);
-    expect(m.sent.at(-1)).toMatch(/Replying to @newsdesk, who posted:\n<parent>\nBig news/);
+    await shows(x, "replier", "collapsed", /^Reply spam from Reply Guy/);
+    // The parent is asked about too, so not necessarily last.
+    expect(m.sent.findLast((text) => handleIn(text) === "replier")).toMatch(
+      /Replying to @newsdesk, who posted:\n<parent>\nBig news/,
+    );
+  });
+
+  it("asks about a reply first seen alone, once it shows as one", async () => {
+    // Only reply spam on: alone, the reply isn't worth asking about.
+    const off = { ragebait: false, ai_slop: false, clickbait: false, engagement_bait: false };
+    await settings(m.sw, { categories: { ...off, nsfw: false, grift: false } });
+    const reply = {
+      id: "401",
+      handle: "replybot",
+      name: "Reply Bot",
+      text: "Wow!! [reply_spam .9]",
+    };
+    try {
+      await append(x, cell(reply));
+      await underParent(x, { id: "400", handle: "blogger", name: "Blog", text: "Hi." }, reply);
+      await shows(x, "replybot", "collapsed", /^Reply spam from Reply Bot/);
+    } finally {
+      await settings(m.sw, { categories: {} });
+    }
   });
 
   it("lists what's hidden in the side panel, and what each strictness would hide", async () => {
     // The toolbar badge counts the same list, once every verdict so far has reached it.
-    const badge = await until(
-      () => m.sw.evaluate(() => chrome.action.getBadgeText({})),
-      (text) => text === "6",
-    );
+    await poll(() => m.sw.evaluate(() => chrome.action.getBadgeText({}))).toBe("7");
     panel = await openPanel(m.ctx, m.extension);
-    expect(badge).toBe("6");
     const counts = () =>
       panel.$$eval(".segment", (all) =>
         all.map((s) => (s as HTMLElement).innerText.replace(/\s+/g, " ")).join(),
       );
-    expect(await until(counts)).toBe("Relaxed 5,Balanced 6,Strict 7");
+    await poll(counts).toBe("Relaxed 6,Balanced 7,Strict 8");
     // The list arriving isn't a post hidden while the reader watches.
     expect(await chomping(panel)).toBe(false);
-    for (const name of ["Rage Farm", "Growth Guru", "Big Brand", "Noted News", "Reply Guy"]) {
-      expect(await panel.innerText(".hidden")).toContain(name);
+    const list = await panel.innerText(".hidden");
+    for (const name of ["Rage Farm", "Growth Guru", "Big Brand", "Noted News", "Reply Bot"]) {
+      expect(list).toContain(name);
     }
   });
 
   it("lets a post through from the side panel, in the tab too", async () => {
     await panel.click('.item:has-text("Growth Guru") .item-open');
     await panel.click('.item:has-text("Growth Guru") button:has-text("Not AI slop")');
-    expect((await look(x, "slopper", "confirmed")).sg).toBe("confirmed");
-    const list = () => panel.innerText(".hidden");
-    expect(await until(list, (text) => !text.includes("Growth Guru"))).not.toContain("Growth");
+    await shows(x, "slopper", "confirmed");
+    await poll(() => panel.innerText(".hidden")).not.toContain("Growth Guru");
   });
 
   it("chomps when a post is hidden with the side panel open", async () => {
     await x.bringToFront();
     await append(x, cell({ id: "301", handle: "rager2", name: "Rager", text: "[ragebait .9]" }));
-    expect(await until(() => chomping(panel))).toBe(true);
+    await poll(() => chomping(panel)).toBe(true);
   });
 
   it("counts a rate limit down from when it starts", async () => {
     await m.sw.evaluate(() =>
       chrome.storage.session.set({ status: { kind: "rate-limited", until: Date.now() + 20_000 } }),
     );
-    const notice = await until(() => panel.locator(".notice").innerText());
-    expect(notice).toMatch(/resumes in (19|20)s/);
+    // The first number it shows, not one it counts down to later.
+    expect(await panel.locator(".notice").innerText()).toMatch(/resumes in (19|20)s/);
   });
 
   it("throws no errors", () => expect(m.errors).toEqual([]));
@@ -237,11 +265,7 @@ describe("with a key Google rejects", { timeout: 60_000 }, () => {
     try {
       await (await m.ctx.newPage()).goto("https://x.com/home");
       const panel = await openPanel(m.ctx, m.extension);
-      const sheet = await until(
-        () => panel.innerText(".sheet"),
-        (text) => text.includes("rejected"),
-      );
-      expect(sheet).toMatch(/Google rejected your API key/);
+      await poll(() => panel.innerText(".sheet")).toMatch(/Google rejected your API key/);
     } finally {
       await m.ctx.close();
     }

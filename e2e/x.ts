@@ -3,6 +3,7 @@
  * `src/sites/x.ts` reads it. X's API, its images and the Decisions API are mocked. A post's text
  * carries the answer the mock API gives: "[ragebait .9]" is ragebait 0.9; anything else is fine.
  */
+import { fileURLToPath } from "node:url";
 import { chromium, type BrowserContext, type Route, type Worker } from "playwright";
 
 export interface MockPost {
@@ -17,7 +18,7 @@ export interface MockPost {
   thread?: boolean;
 }
 
-const DIST = new URL("../dist", import.meta.url).pathname;
+const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 
 /** Whom the reader follows, as X's API tells its own page. */
 const FOLLOWS = {

@@ -218,7 +218,7 @@ describe("on X", { timeout: 30_000 }, () => {
   it("asks about a reply first seen alone, once it shows as one", async () => {
     // Only reply spam on: alone, the reply isn't worth asking about.
     const off = { ragebait: false, ai_slop: false, clickbait: false, engagement_bait: false };
-    await settings(m.sw, { categories: { ...off, nsfw: false, grift: false } });
+    await settings(m.sw, { categories: { ...off, nsfw: false, grift: false, ad: false } });
     const reply = {
       id: "401",
       handle: "replybot",

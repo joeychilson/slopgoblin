@@ -112,7 +112,3 @@ export const CATEGORY = Object.fromEntries(CATEGORIES.map((c) => [c.id, c])) as 
   CategoryId,
   Category
 >;
-
-/** A label as it reads mid-sentence: "ragebait", but "AI slop" and "NSFW" keep their capitals. */
-export const inSentence = (label: string) =>
-  label.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase());

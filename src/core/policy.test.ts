@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { REFUSED, judge, needsScores, type Judged } from "./policy.ts";
+import { REFUSED, judge, needsScores, reason, type Judged } from "./policy.ts";
 import { DEFAULT_SETTINGS, type Settings } from "./settings.ts";
 
 const post = (over: Partial<Judged> = {}): Judged => ({
@@ -62,6 +62,13 @@ describe("judge", () => {
     expect(judge(ad, settings({ trusted: ["someone"] }))).toBeNull();
   });
 
+  it("hides a post with both of X's labels as whichever applies, in any order", () => {
+    const both = post({ labels: ["made_with_ai", "ad"], scores: {} });
+    const made = { category: "made_with_ai", score: 1, labeled: true };
+    expect(judge(both, settings({ categories: only("made_with_ai") }))).toEqual(made);
+    expect(judge({ ...both, followed: true }, settings())).toEqual({ ...made, category: "ad" });
+  });
+
   it("hides what X labels made with AI, but not from people the reader follows", () => {
     const made = post({ labels: ["made_with_ai"], scores: {} });
     expect(judge(made, settings())).toEqual({ category: "made_with_ai", score: 1, labeled: true });
@@ -72,6 +79,18 @@ describe("judge", () => {
       category: "ai_slop",
       score: 0.8,
     });
+  });
+});
+
+describe("reason", () => {
+  it('reads mid-sentence as "an ad", and keeps the capitals of AI slop', () => {
+    expect(reason({ category: "ad", score: 0.55 })).toEqual({
+      label: "Ad",
+      midSentence: "an ad",
+      possibly: true,
+    });
+    expect(reason({ category: "ragebait", score: 0.7 }).midSentence).toBe("ragebait");
+    expect(reason({ category: "ai_slop", score: 0.7 }).midSentence).toBe("AI slop");
   });
 });
 

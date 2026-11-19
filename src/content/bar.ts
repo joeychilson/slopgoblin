@@ -1,7 +1,6 @@
 import { EYE_OFF, GOBLIN_GLYPH } from "../core/glyphs.ts";
 import { reason, type Verdict } from "../core/policy.ts";
 import { displayName, type Post } from "../core/post.ts";
-import { inSentence } from "../core/taxonomy.ts";
 
 type Author = Post["author"];
 
@@ -57,10 +56,8 @@ function row(view: Exclude<View, { mode: "shown" | "removed" }>) {
   }
 
   const { category } = view.verdict;
-  const { label, possibly } = reason(view.verdict);
-  const why = possibly
-    ? ["Possibly ", el("strong", "", inSentence(label))]
-    : [el("strong", "", label)];
+  const { label, midSentence, possibly } = reason(view.verdict);
+  const why = possibly ? ["Possibly ", el("strong", "", midSentence)] : [el("strong", "", label)];
 
   if (view.mode === "collapsed") {
     // The author's faded avatar stands in for the post. A porn bot's avatar would defeat the point.
@@ -76,7 +73,7 @@ function row(view: Exclude<View, { mode: "shown" | "removed" }>) {
   const letThrough = view.verdict.labeled
     ? []
     : [
-        button("not-slop", "sg-link", `Not ${inSentence(label)}`),
+        button("not-slop", "sg-link", `Not ${midSentence}`),
         button("trust", "sg-link", `Always show ${name}`),
       ];
   // Hide sits where Show was, so the reader can flip a post back and forth.

@@ -42,13 +42,15 @@ const QUESTIONS = { post: questionsFor(false), reply: questionsFor(true) };
 const keyFor = (questions: object) => hash(JSON.stringify([MODEL, INPUT_VERSION, questions]));
 const POST_KEY = keyFor(QUESTIONS.post);
 const REPLY_KEY = keyFor(QUESTIONS.reply);
+const THREAD_KEY = `${POST_KEY}.thread`;
 
 /**
  * Fingerprints the question a post gets asked. A cached answer under another key is stale.
- * Reader notes are part of it: one can turn up hours after a post was first judged.
+ * Whether the post it follows came with it is part of it, as are reader notes: either can turn
+ * up after a post was first judged.
  */
 export function questionKey(post: PostContent) {
-  const key = isReply(post) ? REPLY_KEY : POST_KEY;
+  const key = isReply(post) ? REPLY_KEY : post.replyTo ? THREAD_KEY : POST_KEY;
   const notes = [post.readerNote, post.quote?.readerNote].flatMap((n) =>
     n ? [n.rated, n.text] : [],
   );

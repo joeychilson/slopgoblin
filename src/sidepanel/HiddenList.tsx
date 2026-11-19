@@ -4,7 +4,6 @@ import type { RuntimeMessage } from "../core/messages.ts";
 import { reason } from "../core/policy.ts";
 import { displayName } from "../core/post.ts";
 import { updateSettings } from "../core/settings.ts";
-import { inSentence } from "../core/taxonomy.ts";
 import { ICONS, Icon } from "./controls.tsx";
 import { sendToTab } from "./hooks.ts";
 
@@ -80,7 +79,7 @@ function Item(props: {
   const [leaving, setLeaving] = useState(false);
   const row = useRef<HTMLLIElement>(null);
   const isNsfw = verdict.category === "nsfw";
-  const { label, possibly } = reason(verdict);
+  const { label, midSentence, possibly } = reason(verdict);
   const name = displayName(post);
   const actionsId = `actions-${post.id}`;
 
@@ -145,7 +144,7 @@ function Item(props: {
             <span class="item-line">
               <span class="item-name">{name}</span>
               <span class={verdict.labeled || possibly ? "item-why is-quiet" : "item-why"}>
-                {possibly ? `Possibly ${inSentence(label)}` : label}
+                {possibly ? `Possibly ${midSentence}` : label}
               </span>
             </span>
             {/* Explicit text isn't repeated here; the feed covers it too. */}
@@ -165,7 +164,7 @@ function Item(props: {
                 <>
                   <button type="button" style="--i: 1" onClick={letThrough}>
                     <Icon d={ICONS.check} size={16} />
-                    <span>Not {inSentence(label)}</span>
+                    <span>Not {midSentence}</span>
                   </button>
                   <button type="button" style="--i: 2" onClick={trust}>
                     <Icon d={ICONS.trust} size={16} />

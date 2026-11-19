@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { addsContext, decide } from "./decisions.ts";
+import { addsContext, decide, questionKey } from "./decisions.ts";
 import type { PostContent } from "./post.ts";
 
 const post = (over: Partial<PostContent> = {}): PostContent => ({
@@ -27,6 +27,14 @@ describe("addsContext", () => {
   it("is false for the same or less", () => {
     expect(addsContext(reply, reply)).toBe(false);
     expect(addsContext(post(), reply)).toBe(false);
+  });
+});
+
+describe("questionKey", () => {
+  it("changes once the post a reply or a thread post follows turns up, so it's asked again", () => {
+    const alone = questionKey(post());
+    expect(questionKey(post({ replyTo: { handle: "other", text: "Hi" } }))).not.toBe(alone);
+    expect(questionKey(post({ replyTo: { handle: "Someone", text: "Part one" } }))).not.toBe(alone);
   });
 });
 

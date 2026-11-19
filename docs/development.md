@@ -32,12 +32,13 @@ content script (x.com)            service worker                    Gemini
 
 - **One multiple-choice question per post.** The model is asked which label fits best: one
   of the junk categories, or `fine`. It answers with a probability for every option. A post
-  is hidden when the categories you have switched on add up to more than your strictness asks
-  for (75%, 60% or 50%), and the bar names the likeliest one. Asking once, with `fine` spelled
-  out as an option, is what keeps real posts in: separate yes/no questions per category each
-  found something to object to in ordinary fan posts and replies. The cost is that a post
-  that's several kinds has its chance split between them, so switching a kind off also shows
-  posts that are mostly that kind.
+  is hidden when its chance of being junk is more than your strictness asks for (75%, 60% or
+  50%), and at least half of that chance is kinds you have switched on; the bar names the
+  likeliest of those. Asking once, with `fine` spelled out as an option, is what keeps real
+  posts in: separate yes/no questions per category each found something to object to in
+  ordinary fan posts and replies. The kinds overlap, so a post that's several kinds has its
+  chance split between them. That's why the switches go by the share: switching a kind off
+  shows the posts that are mostly that kind.
 - **Community notes count as evidence.** When X shows a note under a post, or under the post
   it quotes, the note goes to the model too, along with whether other readers have rated it
   yet. A post that passes along something its note calls fake or bait is judged as junk of the
@@ -142,12 +143,18 @@ Things learned the hard way, before changing the wording:
 - Questions in one request sway each other, whatever Google's docs say. Adding a yes/no per
   category beside the main question moved its answer for 529 of 1,244 posts. Asked in a
   request of their own, with each category's description, those yes/no questions did catch
-  more junk for a reader with one category on (322 of 480 instead of 229), but also hid 81
-  posts that reader wanted to see instead of 4, most of them junk of the kinds switched off.
+  more junk for a reader with one category on (322 of about 480 instead of 274), but also hid
+  81 posts that reader wanted to see instead of 8, most of them junk of the kinds switched off.
   The categories overlap too much on content-farm posts for per-category questions to keep
   them apart.
+- Adding up only the kinds switched on, as 0.1.1 did, let most junk through for a reader who
+  kept one kind: 229 of 481 caught, against 274 by share, for 4 posts hidden that the reader
+  wanted to see instead of 8. With every kind on, the two rules hide exactly the same posts.
 - Telling the model which image is a video's first frame hid 6 more real video posts at
   Balanced, and caught no more junk.
+- The rule for a post quoting a noted post works in the input, right after the note. Moved
+  into the question, for those posts only, it caught 12 of the 41 junk ones at Balanced
+  instead of 24, and lowered the junk score of 30 of them.
 
 After moving a threshold, update `TRADEOFF` in `taxonomy.ts`, which is what the side panel
 tells people each strictness costs, and the numbers in the README.

@@ -80,7 +80,10 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
     );
 
   return (
-    <Den header={header} goblin={<Lurker awake={settings.enabled} fed={hidden.length} />}>
+    <Den
+      header={header}
+      goblin={<Lurker awake={settings.enabled} fed={checked && hidden.length} />}
+    >
       <div class="sheet-body" key={view} data-from={from}>
         {view === "settings" ? (
           <Settings settings={settings} apiKey={apiKey} hidden={hidden} />

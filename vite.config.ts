@@ -18,6 +18,8 @@ const classicScript = (name: string, input: string) => ({
 export default defineConfig({
   root: "src",
   publicDir: "../public",
+  // With the dependencies, rather than in src/node_modules.
+  cacheDir: "../node_modules/.vite",
   build: {
     outDir: "../dist",
     emptyOutDir: true,

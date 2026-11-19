@@ -72,13 +72,13 @@ function row(view: Exclude<View, { mode: "shown" | "removed" }>) {
     ]);
   }
 
-  const letThrough =
-    category === "ad"
-      ? []
-      : [
-          button("not-slop", "sg-link", `Not ${inSentence(label)}`),
-          button("trust", "sg-link", `Always show ${name}`),
-        ];
+  // There's no arguing with the site's own label.
+  const letThrough = view.verdict.labeled
+    ? []
+    : [
+        button("not-slop", "sg-link", `Not ${inSentence(label)}`),
+        button("trust", "sg-link", `Always show ${name}`),
+      ];
   // Hide sits where Show was, so the reader can flip a post back and forth.
   return context(
     why,

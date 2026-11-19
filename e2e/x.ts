@@ -16,20 +16,31 @@ export interface MockPost {
   note?: string;
   /** Joined by a line to the reply under it. */
   thread?: boolean;
+  /** What X shows under it, from its data. */
+  label?: keyof typeof DISCLOSURES;
 }
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 
-/** Whom the reader follows, as X's API tells its own page. */
-const FOLLOWS = {
+/** How X's data says what it labels a post. */
+const DISCLOSURES = {
+  "Paid partnership": { advertising_disclosure: { is_paid_promotion: true } },
+  "Made with AI": { ai_generated_disclosure: { has_ai_generated_media: true } },
+};
+
+/** What X's API tells its own page: whom the reader follows, and which posts it labels. */
+const apiData = (posts: MockPost[]) => ({
   data: {
     users: ["friend", "brand"].map((handle) => ({
       __typename: "User",
       core: { screen_name: handle },
       relationship_perspectives: { following: true },
     })),
+    tweets: posts.flatMap(({ id, label }) =>
+      label ? [{ __typename: "Tweet", rest_id: id, content_disclosure: DISCLOSURES[label] }] : [],
+    ),
   },
-};
+});
 
 const PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
@@ -73,7 +84,7 @@ export async function launch(posts: MockPost[], api?: (route: Route) => Promise<
   });
   /** The text of each post sent to the Decisions API. */
   const sent: string[] = [];
-  await ctx.route("https://x.com/i/api/**", (route) => route.fulfill({ json: FOLLOWS }));
+  await ctx.route("https://x.com/i/api/**", (route) => route.fulfill({ json: apiData(posts) }));
   await ctx.route(/^https:\/\/x\.com\/(?!i\/api)/, (route) =>
     route.fulfill({
       contentType: "text/html",

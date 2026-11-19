@@ -1,12 +1,15 @@
 import type { Scores } from "./decisions.ts";
+import type { Label } from "./post.ts";
 import type { Settings } from "./settings.ts";
-import { CATEGORIES, CATEGORY, THRESHOLD, type CategoryId } from "./taxonomy.ts";
+import { ASKED, CATEGORIES, CATEGORY, THRESHOLD, type CategoryId } from "./taxonomy.ts";
 
 export interface Verdict {
-  /** The likeliest of the categories switched on. */
+  /** The likeliest of the categories switched on, or the site's own label. */
   category: CategoryId;
   /** The probability the post is junk, of any kind. */
   score: number;
+  /** The site labeled it itself; the model wasn't asked. */
+  labeled?: true;
 }
 
 /**
@@ -20,10 +23,10 @@ export function reason({ category, score }: Verdict) {
   };
 }
 
-/** What a post's verdict rests on: the model's answer, and what's known about who posted it. */
+/** What a post's verdict rests on: the model's answer, the site's labels, and who posted it. */
 export interface Judged {
   scores: Scores;
-  isAd: boolean;
+  labels: Label[];
   handle: string;
   /** The reader let it through. */
   notSlop?: boolean;
@@ -36,10 +39,9 @@ export interface Judged {
  * from cached scores without asking the model again.
  */
 export function judge(post: Judged, settings: Settings): Verdict | null {
-  if (!settings.enabled || post.notSlop || alwaysShown(post, settings)) return null;
-  // X marks ads itself. Following an account doesn't make its ads welcome.
-  if (post.isAd) return settings.categories.ad ? { category: "ad", score: 1 } : null;
-  if (shownAsFollowed(post, settings)) return null;
+  if (post.notSlop || shownAnyway(post, settings)) return null;
+  const label = hidingLabel(post, settings);
+  if (label) return { category: label, score: 1, labeled: true };
 
   // A post that's several kinds has its chance split between them. It's hidden when it's junk
   // and at least half of that is kinds switched on, so switching a kind off shows the posts that
@@ -64,27 +66,32 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
 export const REFUSED: Scores = { nsfw: 1 };
 
 /**
- * Whether the model's answer could change anything. Ads are marked by the site, some authors
- * are never hidden, and some categories are only for replies, so Google isn't asked about those.
+ * Whether the model's answer could change anything. Some posts are shown whatever it says, the
+ * site's own labels hide others, and some categories are only for replies, so Google isn't
+ * asked about those.
  */
 export function needsScores(
   post: Omit<Judged, "scores"> & { isReply: boolean },
   settings: Settings,
 ) {
   return (
-    settings.enabled &&
-    !post.isAd &&
-    !alwaysShown(post, settings) &&
-    !shownAsFollowed(post, settings) &&
-    CATEGORIES.some(
-      (c) =>
-        "describes" in c && settings.categories[c.id] && (post.isReply || !("repliesOnly" in c)),
-    )
+    !shownAnyway(post, settings) &&
+    !hidingLabel(post, settings) &&
+    ASKED.some((c) => settings.categories[c.id] && (post.isReply || !("repliesOnly" in c)))
   );
 }
 
-const alwaysShown = ({ handle }: { handle: string }, settings: Settings) =>
-  settings.trusted.includes(handle.toLowerCase());
+/**
+ * Shown whatever it is: while filtering is off, from an author the reader trusts or follows, or
+ * an ad the site labels while ads are switched off. Following an account doesn't make its ads
+ * welcome.
+ */
+function shownAnyway(post: Omit<Judged, "scores">, settings: Settings) {
+  if (!settings.enabled || settings.trusted.includes(post.handle.toLowerCase())) return true;
+  if (post.labels.includes("ad")) return !settings.categories.ad;
+  return settings.trustFollowing && post.followed === true;
+}
 
-const shownAsFollowed = ({ followed }: { followed?: boolean }, settings: Settings) =>
-  settings.trustFollowing && followed === true;
+/** The first of the site's labels on a post whose category is switched on. */
+const hidingLabel = ({ labels }: { labels: Label[] }, settings: Settings) =>
+  labels.find((label) => settings.categories[label]);

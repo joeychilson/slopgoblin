@@ -24,6 +24,7 @@ import { REFUSED, judge } from "../src/core/policy.ts";
 import type { PostContent } from "../src/core/post.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/core/settings.ts";
 import {
+  ASKED,
   CATEGORIES,
   STRICTNESS,
   THRESHOLD,
@@ -121,7 +122,7 @@ const settingsAt = (
   categories: Object.fromEntries(CATEGORIES.map((c) => [c.id, on(c.id)])) as Settings["categories"],
 });
 const verdict = (row: Row, settings: Settings) =>
-  judge({ scores: answerFor(row).scores, isAd: false, handle: row.author.handle }, settings);
+  judge({ scores: answerFor(row).scores, labels: [], handle: row.author.handle }, settings);
 
 const firm = (rows: Row[]) => rows.filter((row) => !row.unsure);
 const clean = (rows: Row[]) => firm(rows).filter((row) => !row.labels.length);
@@ -152,8 +153,7 @@ for (const { name, rows } of sets.length > 1 ? [...sets, total] : sets) {
 console.log(
   `\n${"category".padEnd(17)}${cell("junk", 6)}${STRICTNESS.map((s) => cell(s, 10)).join("")}${cell("named", 10)}`,
 );
-for (const category of CATEGORIES) {
-  if (!("describes" in category)) continue;
+for (const category of ASKED) {
   const labeled = junk(all).filter((row) => row.labels.includes(category.id));
   const caught = labeled.flatMap((row) => {
     const hit = verdict(row, settingsAt("balanced"));
@@ -177,7 +177,7 @@ const switched = (settings: Settings) => {
   const rest = firm(all).filter((row) => !wanted(row));
   return `${cell(`${hidden(want, settings)}/${want.length}`, 10)}${cell(hidden(rest, settings), 6)}`;
 };
-for (const { id } of CATEGORIES.filter((c) => "describes" in c)) {
+for (const { id } of ASKED) {
   const alone = settingsAt("balanced", (c) => c === id);
   const off = settingsAt("balanced", (c) => c !== id);
   console.log(`${id.padEnd(17)}${switched(alone)}${switched(off)}`);

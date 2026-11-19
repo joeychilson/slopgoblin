@@ -50,4 +50,14 @@ describe("decide", () => {
     expect(sent.match(/<[^<>]*>/g)).toEqual(["<post>", "</post>"]);
     expect(sent).toContain("<3");
   });
+
+  it("judges a reply to the author's own post as part of a thread, never as reply spam", async () => {
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ answers: { kind: { probabilities: { reply_spam: 0.9, fine: 0.1 } } } }),
+    );
+    const thread = await decide("key", post({ replyTo: { handle: "Someone", text: "Part one" } }));
+    const reply = await decide("key", post({ replyTo: { handle: "other", text: "Part one" } }));
+    expect(thread.scores.reply_spam).toBeUndefined();
+    expect(reply.scores.reply_spam).toBe(0.9);
+  });
 });

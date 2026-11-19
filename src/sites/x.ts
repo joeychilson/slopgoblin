@@ -1,6 +1,6 @@
 import type { Post, ReaderNote } from "../core/post.ts";
 import type { SiteAdapter } from "./site.ts";
-import { watchFollows } from "./x-follows.ts";
+import { watchData } from "./x-data.ts";
 
 // X's class names are generated; data-testid attributes are the stable hooks.
 const SEL = {
@@ -46,7 +46,7 @@ export const x: SiteAdapter = {
   avatar: (el) =>
     el.querySelector(SEL.avatar)?.querySelector("img")?.getAttribute("src") ?? undefined,
 
-  watchFollows,
+  watchData,
 
   readPost(el) {
     const own = ownParts(el);
@@ -62,7 +62,7 @@ export const x: SiteAdapter = {
       author: { name: textOf(own.user.querySelector("a")) || handle, handle },
       text,
       images: images(el),
-      isAd,
+      labels: isAd ? ["ad"] : [],
     };
 
     const note = readNote(own.find(SEL.note));

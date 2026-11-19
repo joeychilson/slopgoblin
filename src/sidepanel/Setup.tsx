@@ -68,7 +68,7 @@ export function Setup() {
           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
             Google AI Studio
           </a>
-          . A free one works; a paid one costs about 8¢ per 1,000 posts checked.
+          . A free one works; a paid one costs about 10¢ per 1,000 posts checked.
         </p>
         <p class="hint">
           Posts you scroll past are sent to Google’s Gemini Decisions API to be judged. Your key and

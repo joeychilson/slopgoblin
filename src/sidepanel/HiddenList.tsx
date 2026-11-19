@@ -79,7 +79,6 @@ function Item(props: {
   const { post, verdict } = item;
   const [leaving, setLeaving] = useState(false);
   const row = useRef<HTMLLIElement>(null);
-  const isAd = verdict.category === "ad";
   const isNsfw = verdict.category === "nsfw";
   const { label, possibly } = reason(verdict);
   const name = displayName(post);
@@ -145,7 +144,7 @@ function Item(props: {
           <span class="item-body">
             <span class="item-line">
               <span class="item-name">{name}</span>
-              <span class={isAd || possibly ? "item-why is-quiet" : "item-why"}>
+              <span class={verdict.labeled || possibly ? "item-why is-quiet" : "item-why"}>
                 {possibly ? `Possibly ${inSentence(label)}` : label}
               </span>
             </span>
@@ -162,7 +161,7 @@ function Item(props: {
                 <Icon d={ICONS.eye} size={16} />
                 <span>Show in feed</span>
               </button>
-              {!isAd && (
+              {!verdict.labeled && (
                 <>
                   <button type="button" style="--i: 1" onClick={letThrough}>
                     <Icon d={ICONS.check} size={16} />

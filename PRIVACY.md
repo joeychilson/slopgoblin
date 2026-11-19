@@ -1,6 +1,6 @@
 # Privacy policy
 
-_Last updated November 15, 2026_
+_Last updated November 19, 2026_
 
 Slop Goblin is a Chrome extension that hides junk posts from your X feed. It has no server
 and collects nothing for its developer: no accounts, analytics or telemetry. To judge posts it
@@ -19,8 +19,8 @@ While filtering is on, each post you scroll past on x.com is sent to Google's
 
 A post is sent once, and again only if a community note turns up on it later. These are never
 sent to be judged: your own posts, posts from people you follow (unless you switch that
-setting off), posts from accounts you've marked "Always show", ads, and the post a page is
-about. When someone else replies to or quotes one of them, its text and handle still go along
+setting off), posts from accounts you've marked "Always show", ads, posts X labels "Made with
+AI" (unless you switch that category off), and the post a page is about. When someone else replies to or quotes one of them, its text and handle still go along
 with their post, as above. Nothing is sent while filtering is off.
 
 When you add a key, one test request with the word "Hello" checks that it works.
@@ -41,9 +41,11 @@ it to improve its products.
 - **This month's usage**: how many posts were checked and how many tokens that took.
 - **X's theme** (light, dim or dark), so the side panel can match it.
 
-To read whether you follow a post's author, a script in X's page reads the data X loads for
-its own use. It passes on only handles and whether you follow each, and the content script
-keeps them in memory until the tab closes. Nothing else from that data is read or kept.
+To read whether you follow a post's author, and which posts X labels as a paid partnership or
+"Made with AI", a script in X's page reads the data X loads for its own use. It passes on only
+handles and whether you follow each, and the IDs of labeled posts with their labels. The
+content script keeps them in memory until the tab closes. Nothing else from that data is read
+or kept.
 
 Removing the extension deletes everything it stored.
 

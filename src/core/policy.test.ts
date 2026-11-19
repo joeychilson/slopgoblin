@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, type Settings } from "./settings.ts";
 
 const post = (over: Partial<Judged> = {}): Judged => ({
   scores: { ragebait: 0.5, clickbait: 0.2 },
-  isAd: false,
+  labels: [],
   handle: "Someone",
   ...over,
 });
@@ -55,11 +55,23 @@ describe("judge", () => {
     expect(judge(post({ followed: false }), settings())).not.toBeNull();
   });
 
-  it("hides ads, even from people the reader follows", () => {
-    const ad = post({ isAd: true, scores: {}, followed: true });
-    expect(judge(ad, settings())).toEqual({ category: "ad", score: 1 });
+  it("hides what X labels an ad, even from people the reader follows", () => {
+    const ad = post({ labels: ["ad"], scores: {}, followed: true });
+    expect(judge(ad, settings())).toEqual({ category: "ad", score: 1, labeled: true });
     expect(judge(ad, settings({ categories: only("ragebait") }))).toBeNull();
     expect(judge(ad, settings({ trusted: ["someone"] }))).toBeNull();
+  });
+
+  it("hides what X labels made with AI, but not from people the reader follows", () => {
+    const made = post({ labels: ["made_with_ai"], scores: {} });
+    expect(judge(made, settings())).toEqual({ category: "made_with_ai", score: 1, labeled: true });
+    expect(judge({ ...made, followed: true }, settings())).toBeNull();
+    // Switched off, the label counts for nothing and the model's answer decides.
+    const slop = { ...made, scores: { ai_slop: 0.8 } };
+    expect(judge(slop, settings({ categories: only("ai_slop") }))).toEqual({
+      category: "ai_slop",
+      score: 0.8,
+    });
   });
 });
 
@@ -71,14 +83,21 @@ describe("needsScores", () => {
     // Whether the reader follows the author isn't known yet.
     expect(needsScores(asked({ followed: undefined }), settings())).toBe(true);
     expect(needsScores(asked({}, true), settings({ categories: only("reply_spam") }))).toBe(true);
+    // X marks only the ads it's paid to show; the model finds the sales pitches.
+    expect(needsScores(asked(), settings({ categories: only("ad") }))).toBe(true);
+    const made = asked({ labels: ["made_with_ai"] });
+    expect(needsScores(made, settings({ categories: only("ai_slop") }))).toBe(true);
   });
 
   it("sends nothing that couldn't be hidden", () => {
     expect(needsScores(asked(), settings({ enabled: false }))).toBe(false);
-    expect(needsScores(asked({ isAd: true }), settings())).toBe(false);
+    expect(needsScores(asked({ labels: ["ad"] }), settings())).toBe(false);
+    expect(needsScores(asked({ labels: ["ad"] }), settings({ categories: only("ragebait") }))).toBe(
+      false,
+    );
+    expect(needsScores(asked({ labels: ["made_with_ai"] }), settings())).toBe(false);
     expect(needsScores(asked(), settings({ trusted: ["someone"] }))).toBe(false);
     expect(needsScores(asked({ followed: true }), settings())).toBe(false);
-    expect(needsScores(asked(), settings({ categories: only("ad") }))).toBe(false);
     expect(needsScores(asked(), settings({ categories: only("reply_spam") }))).toBe(false);
   });
 });

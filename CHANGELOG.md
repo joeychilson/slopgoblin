@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.2
+
+- **More junk is caught with some kinds switched off.** A post is hidden when it's junk and
+  mostly kinds you have switched on. With only one kind on, nearly 6 in 10 posts of that kind
+  are hidden now, up from about half. With every kind on, nothing changes.
+- **A reply is checked as a reply once the post it answers shows**, so reply spam first seen on
+  its own is caught in its thread.
+- **A display name or link card can't pose as a community note either**, as a post's text
+  already couldn't.
+- **Small fixes:** the side panel's rate-limit countdown, a "Reload to start" that could stick
+  on pages without posts, and the goblin chomping every time the panel opens.
+
 ## 0.1.1
 
 - **Relaxed and Strict are better trades.** Relaxed now catches about 2 in 3 junk posts, up

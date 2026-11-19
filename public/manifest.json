@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Slop Goblin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Hides AI slop, ragebait, clickbait, engagement bait, reply spam, NSFW posts, grifts and ads from your X feed.",
   "homepage_url": "https://slopgoblin.app",
   "minimum_chrome_version": "123",

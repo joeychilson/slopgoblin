@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0
+
+- **News stays.** News the model hadn't heard of read to it as made up, so it was hidden as AI
+  slop or clickbait. Now the model judges how a post is made, not whether it's true. On news
+  accounts, Balanced hides 7 real posts in 214 by mistake, down from 28. On everyday feeds it
+  hides about 1 in 170, down from 1 in 90, and still catches about 3 in 4 junk posts.
+- **X's own labels hide posts without asking Google.** A paid partnership is hidden as an ad,
+  even from people you follow. A new "Made with AI" switch hides posts X labels as made with AI,
+  unless you follow their author.
+- **Sales pitches count as ads**, such as an account's plug for its own paid service. Someone
+  showing what they built doesn't.
+- **A post that continues its author's thread** is read as part of it, so it's never called
+  reply spam.
+- **Every post is checked once more** after updating, since the question changed. Checking
+  costs about 10¢ per 1,000 posts on a paid key, up from 9¢.
+
 ## 0.1.2
 
 - **More junk is caught with some kinds switched off.** A post is hidden when it's junk and

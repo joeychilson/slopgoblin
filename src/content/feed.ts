@@ -78,10 +78,12 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       if (site.isFocused(el) || !site.container(el)) continue;
       el.setAttribute(ID_ATTR, post.id);
       const t = posts.get(post.id) ?? track(post);
-      // The post it replies to, or a note, can turn up after a post was judged without it.
-      if (t.status === "done" && addsContext(post, t.post)) {
+      // The post it replies to, or a note, can turn up after the post was first read without it.
+      // That can make it worth asking about (a reply, when only replies are filtered), or worth
+      // asking again.
+      if (t.status !== "pending" && addsContext(post, t.post)) {
         t.post = post;
-        t.status = "idle";
+        if (t.status === "done") t.status = "idle";
       }
       if (wantsRequest(t)) void request(t);
       show(t, el, true);

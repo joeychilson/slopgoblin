@@ -170,7 +170,7 @@ function describeNote(note: ReaderNote, target: string) {
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 /** Text from the site with anything shaped like a tag defused, so it can't close or fake ours. */
-const defuse = (text: string) => text.replace(/<(\s*\/?\s*[a-z][^<>\n]*)>/gi, "‹$1›");
+const defuse = (text: string) => text.replace(/<(\s*\/?\s*[a-z][^<>]*)>/gi, "‹$1›");
 const tag = (name: string, text: string, max: number) =>
   `<${name}>\n${defuse(clip(text, max))}\n</${name}>`;
 

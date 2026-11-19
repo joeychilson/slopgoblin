@@ -1,0 +1,283 @@
+// What the unit tests can't see: the content script, the service worker and the side panel
+// together, on a mock X page (x.ts). `vp run e2e` builds first.
+import type { Page } from "playwright";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { cell, launch, openPanel, settings, type MockPost } from "./x.ts";
+
+const POSTS: MockPost[] = [
+  { id: "101", handle: "alice", name: "Alice", text: "Lovely morning walk with the dog." },
+  { id: "102", handle: "rager", name: "Rage Farm", text: "Women are all the same [ragebait .92]" },
+  { id: "103", handle: "slopper", name: "Growth Guru", text: "It's not X. It's Y. [ai_slop .8]" },
+  { id: "104", handle: "friend", name: "A Friend", text: "Reply YES [engagement_bait .95]" },
+  { id: "105", handle: "maybe", name: "Maybe Bait", text: "I didn't know this 😱 [clickbait .55]" },
+  { id: "106", handle: "brand", name: "Big Brand", text: "Buy our thing", ad: true },
+  { id: "107", handle: "me", name: "Me", text: "My own post [ragebait .99]" },
+  { id: "108", handle: "nsfwbot", name: "🔥🔥", text: "Click my link [nsfw .97]" },
+  {
+    id: "109",
+    handle: "noted",
+    name: "Noted News",
+    text: "Real photo",
+    note: "AI-made. [ai_slop .7]",
+  },
+  { id: "110", handle: "replier", name: "Reply Guy", text: "So true!! [reply_spam .9]" },
+];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Retries an assertion for up to 10 seconds. */
+const poll = <T>(read: () => T) => expect.poll(read, { timeout: 10_000 });
+
+const cellOf = (handle: string) => `[data-testid="cellInnerDiv"]:has(a[href="/${handle}"])`;
+
+/** How a post is shown, and what its bar says. */
+const state = (x: Page, handle: string) =>
+  x.$eval(cellOf(handle), (cell) => ({
+    sg: (cell as HTMLElement).dataset.sg ?? "shown",
+    bar: cell.querySelector<HTMLElement>(".sg-bar")?.innerText.replace(/\s+/g, " ") ?? "",
+  }));
+
+/** Waits for a post to be shown as `sg`, with a bar that matches `bar`. */
+const shows = (x: Page, handle: string, sg: string, bar = /^/) =>
+  poll(() => state(x, handle)).toMatchObject({ sg, bar: expect.stringMatching(bar) });
+
+const click = (x: Page, handle: string, target: string) => x.click(`${cellOf(handle)} ${target}`);
+
+const append = (x: Page, html: string) =>
+  x.evaluate((html) => document.querySelector("main")!.insertAdjacentHTML("beforeend", html), html);
+
+/** X shows a post again, now under the post it replies to. */
+async function underParent(x: Page, parent: MockPost, reply: MockPost) {
+  await x.locator(cellOf(reply.handle)).evaluate((el) => el.remove());
+  await append(x, cell({ ...parent, thread: true }) + cell(reply));
+}
+
+const handleIn = (text: string) => text.match(/^Author: .* \(@(\w+)\)$/m)?.[1];
+
+describe("on X", { timeout: 30_000 }, () => {
+  let m: Awaited<ReturnType<typeof launch>>;
+  let x: Page;
+  let panel: Page;
+
+  beforeAll(async () => {
+    m = await launch(POSTS);
+    x = await m.ctx.newPage();
+    await x.goto("https://x.com/home");
+  }, 60_000);
+  afterAll(() => m.ctx.close());
+
+  it("hides junk, with a bar that says why", async () => {
+    await shows(x, "rager", "collapsed", /^Ragebait from Rage Farm/);
+    await shows(x, "noted", "collapsed", /^AI slop from Noted News/);
+    await shows(x, "brand", "collapsed", /^Ad from Big Brand/);
+    // A name that's all emoji gives way to the handle, and a porn bot's avatar isn't shown.
+    await shows(x, "nsfwbot", "collapsed", /^NSFW from @nsfwbot/);
+    expect(await x.locator(".sg-bar:has-text('@nsfwbot') .sg-ghost").count()).toBe(0);
+    for (const handle of ["alice", "maybe", "friend", "me", "replier"]) {
+      await shows(x, handle, "shown");
+    }
+  });
+
+  it("asks only about posts it could hide, once each", async () => {
+    // Not the reader's own, not people they follow, not ads.
+    await poll(() => m.sent.map(handleIn).sort((a = "", b = "") => a.localeCompare(b))).toEqual([
+      "alice",
+      "maybe",
+      "noted",
+      "nsfwbot",
+      "rager",
+      "replier",
+      "slopper",
+    ]);
+    const noted = m.sent.find((text) => handleIn(text) === "noted");
+    expect(noted).toMatch(/Readers added this community note to the post:\n<note>\nAI-made/);
+  });
+
+  it("tells the side panel it's running before the site shows a post", async () => {
+    const heard = m.sw.evaluate(
+      () =>
+        new Promise<boolean>((resolve) => {
+          chrome.runtime.onMessage.addListener((message: { type: string }, sender) => {
+            if (message.type === "tab-state" && sender.tab?.url?.endsWith("/messages")) {
+              resolve(true);
+            }
+          });
+          setTimeout(() => resolve(false), 5000);
+        }),
+    );
+    const messages = await m.ctx.newPage();
+    await messages.goto("https://x.com/messages");
+    expect(await heard).toBe(true);
+    await messages.close();
+  });
+
+  it("lets a post through from its bar, and takes it back", async () => {
+    await click(x, "rager", ".sg-row");
+    await shows(x, "rager", "revealed", /Not ragebait Always show Rage Farm/);
+    await click(x, "rager", "[data-sg-action=not-slop]");
+    await shows(x, "rager", "confirmed", /won't be hidden again/);
+    await click(x, "rager", "[data-sg-action=undo]");
+    await shows(x, "rager", "revealed");
+    await click(x, "rager", "[data-sg-action=hide]");
+    await shows(x, "rager", "collapsed");
+  });
+
+  it("always shows an author, and takes it back", async () => {
+    await click(x, "slopper", ".sg-row");
+    await click(x, "slopper", "[data-sg-action=trust]");
+    await shows(x, "slopper", "confirmed", /Growth Guru will always show/);
+    expect((await settings(m.sw)).trusted).toEqual(["slopper"]);
+    await click(x, "slopper", "[data-sg-action=undo]");
+    await shows(x, "slopper", "revealed");
+    expect((await settings(m.sw)).trusted).toEqual([]);
+    // Trusted again from elsewhere: shown, without the line confirming it.
+    await settings(m.sw, { trusted: ["slopper"] });
+    try {
+      await shows(x, "slopper", "shown", /^$/);
+    } finally {
+      await settings(m.sw, { trusted: [] });
+    }
+  });
+
+  it("ignores a bar a script fakes", async () => {
+    await x.evaluate(() => {
+      const bar = document.createElement("div");
+      bar.className = "sg-bar";
+      bar.dataset.id = "x:102";
+      bar.innerHTML = '<button data-sg-action="trust">Always show</button>';
+      document.body.append(bar);
+      bar.querySelector("button")!.click();
+    });
+    await sleep(500);
+    expect((await settings(m.sw)).trusted).toEqual([]);
+  });
+
+  it("applies settings to the answers it has, without asking again", async () => {
+    const asked = m.sent.length;
+    await settings(m.sw, { strictness: "strict" });
+    await shows(x, "maybe", "collapsed", /^Possibly clickbait/);
+    await settings(m.sw, { strictness: "balanced", peek: true });
+    await shows(x, "nsfwbot", "revealed");
+    expect((await state(x, "nsfwbot")).bar).not.toMatch(/Hide/);
+    await settings(m.sw, { peek: false, hideMode: "remove" });
+    await shows(x, "rager", "removed");
+    await settings(m.sw, { hideMode: "collapse", categories: { ragebait: false } });
+    await shows(x, "rager", "shown");
+    await settings(m.sw, { categories: {}, enabled: false });
+    await shows(x, "nsfwbot", "shown");
+    await settings(m.sw, { enabled: true });
+    await shows(x, "rager", "collapsed");
+    expect(m.sent.length).toBe(asked);
+  });
+
+  it("answers from its cache after a reload", async () => {
+    const asked = m.sent.length;
+    await x.reload();
+    await shows(x, "rager", "collapsed");
+    await sleep(1500);
+    expect(m.sent.length).toBe(asked);
+  });
+
+  it("asks again when the post a reply answers turns up", async () => {
+    const replier = POSTS.find((p) => p.handle === "replier")!;
+    await underParent(
+      x,
+      { id: "200", handle: "newsdesk", name: "News", text: "Big news." },
+      replier,
+    );
+    await shows(x, "replier", "collapsed", /^Reply spam from Reply Guy/);
+    // The parent is asked about too, so not necessarily last.
+    expect(m.sent.findLast((text) => handleIn(text) === "replier")).toMatch(
+      /Replying to @newsdesk, who posted:\n<parent>\nBig news/,
+    );
+  });
+
+  it("asks about a reply first seen alone, once it shows as one", async () => {
+    // Only reply spam on: alone, the reply isn't worth asking about.
+    const off = { ragebait: false, ai_slop: false, clickbait: false, engagement_bait: false };
+    await settings(m.sw, { categories: { ...off, nsfw: false, grift: false } });
+    const reply = {
+      id: "401",
+      handle: "replybot",
+      name: "Reply Bot",
+      text: "Wow!! [reply_spam .9]",
+    };
+    try {
+      await append(x, cell(reply));
+      await underParent(x, { id: "400", handle: "blogger", name: "Blog", text: "Hi." }, reply);
+      await shows(x, "replybot", "collapsed", /^Reply spam from Reply Bot/);
+    } finally {
+      await settings(m.sw, { categories: {} });
+    }
+  });
+
+  it("lists what's hidden in the side panel, and what each strictness would hide", async () => {
+    // The toolbar badge counts the same list, once every verdict so far has reached it.
+    await poll(() => m.sw.evaluate(() => chrome.action.getBadgeText({}))).toBe("7");
+    panel = await openPanel(m.ctx, m.extension);
+    const counts = () =>
+      panel.$$eval(".segment", (all) =>
+        all.map((s) => (s as HTMLElement).innerText.replace(/\s+/g, " ")).join(),
+      );
+    await poll(counts).toBe("Relaxed 6,Balanced 7,Strict 8");
+    // The list arriving isn't a post hidden while the reader watches.
+    expect(await chomping(panel)).toBe(false);
+    const list = await panel.innerText(".hidden");
+    for (const name of ["Rage Farm", "Growth Guru", "Big Brand", "Noted News", "Reply Bot"]) {
+      expect(list).toContain(name);
+    }
+  });
+
+  it("lets a post through from the side panel, in the tab too", async () => {
+    await panel.click('.item:has-text("Growth Guru") .item-open');
+    await panel.click('.item:has-text("Growth Guru") button:has-text("Not AI slop")');
+    await shows(x, "slopper", "confirmed");
+    await poll(() => panel.innerText(".hidden")).not.toContain("Growth Guru");
+  });
+
+  it("chomps when a post is hidden with the side panel open", async () => {
+    await x.bringToFront();
+    await append(x, cell({ id: "301", handle: "rager2", name: "Rager", text: "[ragebait .9]" }));
+    await poll(() => chomping(panel)).toBe(true);
+  });
+
+  it("counts a rate limit down from when it starts", async () => {
+    await m.sw.evaluate(() =>
+      chrome.storage.session.set({ status: { kind: "rate-limited", until: Date.now() + 20_000 } }),
+    );
+    // The first number it shows, not one it counts down to later.
+    expect(await panel.locator(".notice").innerText()).toMatch(/resumes in (19|20)s/);
+  });
+
+  it("throws no errors", () => expect(m.errors).toEqual([]));
+});
+
+describe("with a key Google rejects", { timeout: 60_000 }, () => {
+  it("says so in the side panel", async () => {
+    const rejected = {
+      code: 400,
+      message: "API key not valid.",
+      details: [{ reason: "API_KEY_INVALID" }],
+    };
+    const m = await launch(POSTS, (route) =>
+      route.fulfill({ status: 400, json: { error: rejected } }),
+    );
+    try {
+      await (await m.ctx.newPage()).goto("https://x.com/home");
+      const panel = await openPanel(m.ctx, m.extension);
+      await poll(() => panel.innerText(".sheet")).toMatch(/Google rejected your API key/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+});
+
+/** Whether the goblin is mid-chomp: an animation on its jaw that isn't one of its CSS ones. */
+function chomping(panel: Page) {
+  return panel.evaluate(() =>
+    document
+      .querySelector(".lurker-jaw")!
+      .getAnimations()
+      .some((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition)),
+  );
+}

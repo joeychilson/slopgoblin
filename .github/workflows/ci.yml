@@ -27,4 +27,7 @@ jobs:
           cache: true
       - run: vp check
       - run: vp test
-      - run: vp build
+      # The end-to-end tests build the extension and load it into Chromium. The runner has the
+      # libraries Chromium needs already, with its own Chrome.
+      - run: vp exec playwright install --no-shell chromium
+      - run: vp run e2e

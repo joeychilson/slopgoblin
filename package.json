@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vp build --watch",
-    "eval": "node --env-file-if-exists=.env.local eval/run.ts"
+    "eval": "node --env-file-if-exists=.env.local eval/run.ts",
+    "e2e": "vp build && vp test --dir e2e"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
@@ -13,6 +14,7 @@
   "devDependencies": {
     "@types/chrome": "^0.3.7",
     "@types/node": "^26.6.6",
+    "playwright": "^1.65.1",
     "typescript": "~7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"

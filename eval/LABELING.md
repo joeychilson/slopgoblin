@@ -26,12 +26,17 @@ The reader wants junk gone, not posts they'd merely skip. Ordinary posts by real
 
 ## Categories
 
+Don't judge whether a post is true from what you know: plenty of news is newer than what you,
+or the model, have heard of. A post that says what happened is news, however surprising. Only
+a community note shows a post is fake.
+
 - `ragebait`: built to provoke outrage for engagement. Sweeping put-downs of a group (a gender, a generation, a nationality, a fandom), gender-war bait, outrage-clip accounts whose framing is the provocation ("X was SHOCKED that…"), invented or trivial outrage. Not a real person's opinion, even a harsh one; not criticism of a named person's conduct, sports banter, a politician's own statement, satire, or upsetting news reported straight.
 - `ai_slop`: generic chatbot-voice text (hollow hooks, "It's not X. It's Y.", emoji-bullet platitudes, tool or prompt listicles) or AI-generated images and video posted as filler or passed off as real. Not posts about AI, or people showing what they made with it on purpose.
-- `clickbait`: withholds or hypes to make you watch or click. Curiosity gaps ("I didn't know this 😱"), fake BREAKING, celebrity-gossip bait, and content-farm clips: a recycled video behind a vague reaction caption that doesn't say what it shows. Not a fan posting a clip or meme about something they follow, an accurate headline, or a real announcement.
+- `clickbait`: withholds or hypes to make you watch or click. Curiosity gaps ("I didn't know this 😱"), melodramatic BREAKING, celebrity-gossip bait, and content-farm clips: a recycled video behind a vague reaction caption that doesn't say what it shows. Not a fan posting a clip or meme about something they follow, an accurate headline, or a real announcement.
 - `engagement_bait`: the point is to farm replies, likes or follows. "Reply YES if…", "Which one?", bait questions over a clip, follow trains, "gm" farming. Not a real question the author wants answered.
 - `reply_spam` (replies only): generic praise that fits any post, bot-like or emoji-only filler, AI-written restatements of the parent, "check my bio", unrelated self-promotion, shill replies, off-topic links. Not short genuine replies, jokes about the post, disagreement, or fans cheering under a fan post.
 - `nsfw`: nudity, sexual or pornographic images, bodies posed to titillate, porn or OnlyFans promotion, porn bots, explicit sexual descriptions, gore. Not swimwear, fitness, fashion, mild innuendo, art, or news about sex crimes.
+- `ad`: a sales pitch, not news. A news or info account's plug for its own paid service ("sign up now", free trials, "join the terminal"), or a paid partnership. Not a maker announcing or showing what they built. What X labels an ad itself (promoted posts, paid partnerships) is hidden by rule, so it isn't in the eval.
 - `grift`: manipulative selling or shilling. Get-rich claims, course or "DM me" funnels, memecoin or stock pumps, follow-to-win giveaways, fake airdrops, scam links. Not someone plainly launching their own product, job posts, or honest market talk.
 
 ## Calls that came up on a real feed
@@ -46,3 +51,13 @@ The reader wants junk gone, not posts they'd merely skip. Ordinary posts by real
 - A captionless clip from an unknown account, or "🌝🌝👑" over one: unsure.
 - "Damn is this what entering heaven sounds like" over a concert clip, small account: unsure.
 - A reply that's short but reacts to the actual post: stays.
+- A news account's headline that says what happened, even under "BREAKING:", "JUST IN:" or in
+  capitals: stays. One that withholds it, or an all-caps melodrama with quotes that read
+  invented ("SENDS SHOCKWAVES", "BREAKS DOWN IN TEARS"), with "@grok confirm" tacked on:
+  `clickbait`.
+- A news account's own follow-up under its post, such as a source link: stays. A pitch for its
+  paid service under every post: `ad`.
+- A brand account (an exchange, a betting site, a wallet) answering a viral post with a meme:
+  `reply_spam`.
+- A prompt pack behind "Comment PROMPT and I'll DM you": `ai_slop`, `grift`,
+  `engagement_bait`.

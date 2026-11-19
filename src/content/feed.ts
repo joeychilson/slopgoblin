@@ -2,9 +2,9 @@ import type { CheckedPost } from "../core/checked.ts";
 import { addsContext, type Scores } from "../core/decisions.ts";
 import type { ClassifyResponse, RuntimeMessage, TabMessage, TabState } from "../core/messages.ts";
 import { judge, needsScores, type Judged, type Verdict } from "../core/policy.ts";
-import type { Post } from "../core/post.ts";
+import { isReply, type Label, type Post } from "../core/post.ts";
 import { updateSettings, watchSettings, type Settings } from "../core/settings.ts";
-import type { SiteAdapter } from "../sites/site.ts";
+import type { SiteAdapter, SiteData } from "../sites/site.ts";
 import { renderCell, type BarAction, type View } from "./bar.ts";
 
 const RETRY_MS = 20_000;
@@ -28,7 +28,7 @@ interface Tracked {
   /** Set when the reader lets the post through from its bar, which then confirms it. */
   letThrough?: "not-slop" | "trust";
   verdict: Verdict | null;
-  /** When it was first judged. From then on it's in the side panel's list. */
+  /** When it was first judged, or found with a label. From then on it's in the side panel's list. */
   checkedAt?: number;
   /** X fills it in a moment after the post mounts. Kept for the list, which outlives the element. */
   avatar?: string;
@@ -40,6 +40,8 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   const posts = new Map<string, Tracked>();
   /** Lowercase handles, as the site reveals whether the reader follows them. */
   const follows = new Map<string, boolean>();
+  /** Post ids, and the labels the site's data gives them. */
+  const labels = new Map<string, Label[]>();
   const seen = new WeakSet<Element>();
   /** Checked posts whose entry in the side panel's list is out of date. */
   const unsent = new Set<Tracked>();
@@ -52,8 +54,9 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   // Runs before paint, so remounted posts are hidden again without flashing.
   const observer = new MutationObserver(scan);
   watchSettings(onSettings);
-  // Before the first scan, so Google is never asked about posts by people the reader follows.
-  site.watchFollows?.(onFollows);
+  // Before the first scan, so Google is never asked about posts by people the reader follows, or
+  // about posts the site labels.
+  site.watchData?.(onData);
   document.addEventListener("click", onBarClick, true);
   chrome.runtime.onMessage.addListener(onTabMessage);
   observer.observe(document.body, { childList: true, subtree: true });
@@ -115,14 +118,18 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       if (!elementsOf(old).length) posts.delete(id);
     }
     posts.set(post.id, t);
-    // The site marks ads itself, so there's nothing to ask.
-    if (post.isAd) checked(t);
+    if (labelsOf(t).length) listed(t);
     return t;
   }
 
   /** The post has its answer. */
   function checked(t: Tracked) {
     t.status = "done";
+    listed(t);
+  }
+
+  /** Puts the post in the side panel's list, judged on what's known so far. */
+  function listed(t: Tracked) {
     t.checkedAt ??= Date.now();
     rejudge(t);
     touched(t);
@@ -140,11 +147,14 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     changed();
   }
 
-  function onFollows(changes: [handle: string, following: boolean][]) {
-    for (const [handle, following] of changes) follows.set(handle, following);
-    const handles = new Set(changes.map(([handle]) => handle));
+  function onData(data: SiteData) {
+    for (const [handle, following] of data.follows) follows.set(handle, following);
+    for (const [id, these] of data.labels) labels.set(id, these);
+    const handles = new Set(data.follows.map(([handle]) => handle));
+    const ids = new Set(data.labels.map(([id]) => id));
     for (const t of posts.values()) {
-      if (!handles.has(handleOf(t))) continue;
+      if (!handles.has(handleOf(t)) && !ids.has(t.post.id)) continue;
+      if (labelsOf(t).length) t.checkedAt ??= Date.now();
       update(t, false);
       if (wantsRequest(t) && elementsOf(t).length) void request(t);
       touched(t);
@@ -158,11 +168,16 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   function judged(t: Tracked): Judged {
     return {
       scores: t.scores,
-      isAd: t.post.isAd,
+      labels: labelsOf(t),
       handle: t.post.author.handle,
       notSlop: t.notSlop,
       followed: follows.get(handleOf(t)),
     };
+  }
+
+  /** The labels in the post's markup, and any the site's data has given it. */
+  function labelsOf(t: Tracked) {
+    return [...new Set([...t.post.labels, ...(labels.get(t.post.id) ?? [])])];
   }
 
   function wantsRequest(t: Tracked) {
@@ -170,7 +185,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   }
 
   function worthAsking(t: Tracked) {
-    return needsScores({ ...judged(t), isReply: Boolean(t.post.replyTo) }, settings);
+    return needsScores({ ...judged(t), isReply: isReply(t.post) }, settings);
   }
 
   async function request(t: Tracked) {
@@ -178,7 +193,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     changed();
     // Cached scores come back straight away. A post that still needs judging gets a moment to
     // finish rendering first, then is read again.
-    let res = await classify(t.post, true);
+    let res = await classify(t, true);
     if ("uncached" in res) {
       await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
       const el = elementsOf(t)[0];
@@ -190,7 +205,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
         return;
       }
       t.post = site.readPost(el) ?? t.post;
-      res = await classify(t.post, false);
+      res = await classify(t, false);
     }
 
     if ("scores" in res) {
@@ -207,7 +222,8 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     }
   }
 
-  async function classify(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
+  async function classify(t: Tracked, cachedOnly: boolean): Promise<ClassifyResponse> {
+    const post: Post = { ...t.post, labels: labelsOf(t) };
     const res = await send<ClassifyResponse>({ type: "classify", post, cachedOnly });
     return res ?? { unavailable: true };
   }

@@ -19,9 +19,10 @@ to see the post.
 
 ## What it does
 
-- Hides seven kinds of junk, and ads. Switch off any you don't mind.
-- Three strictness levels. Balanced catches about 9 in 10 junk posts and
-  hides about 1 real post in 200 by mistake.
+- Hides seven kinds of junk, ads, and posts X labels "Made with AI". Switch
+  off any you don't mind. What X labels itself is hidden without asking Google.
+- Three strictness levels. On an everyday feed, Balanced catches about 3 in 4
+  junk posts and hides about 1 real post in 170 by mistake.
 - Leaves your own posts, people you follow and accounts you mark "Always
   show" alone, and never asks Google about them.
 - Lists what's been hidden lately in a side panel, from every tab, where you
@@ -41,9 +42,9 @@ Slop Goblin needs Chrome 123 or later.
 
 ## What it costs
 
-A free key works. Its 50,000 tokens a minute cover about 60 posts a minute,
+A free key works. Its 50,000 tokens a minute cover about 50 posts a minute,
 and when they run out, the posts on screen are checked first once they're
-back. A paid key costs about 8¢ per 1,000 posts. Settings shows this
+back. A paid key costs about 10¢ per 1,000 posts. Settings shows this
 month's total.
 
 ## Privacy

@@ -1,10 +1,10 @@
-import type { PostContent, ReaderNote } from "./post.ts";
-import { CATEGORIES, FINE, QUESTION, type CategoryId } from "./taxonomy.ts";
+import { isReply, type PostContent, type ReaderNote } from "./post.ts";
+import { ASKED, FINE, QUESTION, type CategoryId } from "./taxonomy.ts";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/decisions";
 const MODEL = "gemini-decision-1";
 /** Bump when `describePost` changes meaningfully, so cached scores get recomputed. */
-const INPUT_VERSION = 3;
+const INPUT_VERSION = 4;
 const MAX_IMAGES = 2;
 const TIMEOUT_MS = 30_000;
 /** Input tokens are all the Decisions API bills for. */
@@ -13,9 +13,11 @@ export const USD_PER_MILLION_TOKENS = 0.1;
 /** The probability a post belongs to each category. What's left over is the chance it's fine. */
 export type Scores = Partial<Record<CategoryId, number>>;
 
-const OPTIONS = CATEGORIES.flatMap((c) =>
-  "describes" in c ? [{ id: c.id, describes: c.describes, repliesOnly: "repliesOnly" in c }] : [],
-);
+const OPTIONS = ASKED.map((c) => ({
+  id: c.id,
+  describes: c.describes,
+  repliesOnly: "repliesOnly" in c,
+}));
 
 const optionsFor = (isReply: boolean) => OPTIONS.filter((o) => isReply || !o.repliesOnly);
 
@@ -40,13 +42,15 @@ const QUESTIONS = { post: questionsFor(false), reply: questionsFor(true) };
 const keyFor = (questions: object) => hash(JSON.stringify([MODEL, INPUT_VERSION, questions]));
 const POST_KEY = keyFor(QUESTIONS.post);
 const REPLY_KEY = keyFor(QUESTIONS.reply);
+const THREAD_KEY = `${POST_KEY}.thread`;
 
 /**
  * Fingerprints the question a post gets asked. A cached answer under another key is stale.
- * Reader notes are part of it: one can turn up hours after a post was first judged.
+ * Whether the post it follows came with it is part of it, as are reader notes: either can turn
+ * up after a post was first judged.
  */
 export function questionKey(post: PostContent) {
-  const key = post.replyTo ? REPLY_KEY : POST_KEY;
+  const key = isReply(post) ? REPLY_KEY : post.replyTo ? THREAD_KEY : POST_KEY;
   const notes = [post.readerNote, post.quote?.readerNote].flatMap((n) =>
     n ? [n.rated, n.text] : [],
   );
@@ -89,7 +93,7 @@ export async function decide(
   withImages = true,
 ): Promise<{ scores: Scores; tokens: number }> {
   const images = withImages ? (post.images ?? []).slice(0, MAX_IMAGES) : [];
-  const isReply = Boolean(post.replyTo);
+  const reply = isReply(post);
   const body = {
     model: MODEL,
     input: [
@@ -101,7 +105,7 @@ export async function decide(
         resolution: "low",
       })),
     ],
-    questions: isReply ? QUESTIONS.reply : QUESTIONS.post,
+    questions: reply ? QUESTIONS.reply : QUESTIONS.post,
   };
 
   let res: Response;
@@ -126,7 +130,7 @@ export async function decide(
   const probabilities = json.answers?.kind?.probabilities;
   if (!probabilities) throw new DecisionError("fatal", "Gemini gave no answer");
   return {
-    scores: Object.fromEntries(optionsFor(isReply).map((o) => [o.id, probabilities[o.id] ?? 0])),
+    scores: Object.fromEntries(optionsFor(reply).map((o) => [o.id, probabilities[o.id] ?? 0])),
     tokens: json.usage?.total_input_tokens ?? 0,
   };
 }
@@ -142,7 +146,12 @@ function describePost(post: PostContent, imageCount: number): string {
   const { replyTo, quote } = post;
   if (replyTo) {
     const parent = replyTo.text || "(no text)";
-    lines.push(`Replying to @${replyTo.handle}, who posted:`, tag("parent", parent, 600));
+    lines.push(
+      isReply(post)
+        ? `Replying to @${replyTo.handle}, who posted:`
+        : "Continuing the author's own thread, after:",
+      tag("parent", parent, 600),
+    );
   }
   lines.push(tag("post", post.text || "(no text)", 2000));
   if (post.readerNote) lines.push(...describeNote(post.readerNote, "the post"));

@@ -1,7 +1,7 @@
 import { DecisionError, decide, questionKey, type Scores } from "../core/decisions.ts";
 import type { ClassifyResponse } from "../core/messages.ts";
 import { REFUSED, needsScores } from "../core/policy.ts";
-import type { Post } from "../core/post.ts";
+import { isReply, type Post } from "../core/post.ts";
 import { loadSettings } from "../core/settings.ts";
 import { store, thisMonth, type ServiceStatus } from "../core/storage.ts";
 import { getEntry, putEntry } from "./cache.ts";
@@ -71,7 +71,7 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unavailable"> {
   await acquire();
   try {
     if (Date.now() - queued > STALE_MS) return "unavailable";
-    const asked = { isAd: post.isAd, handle: post.author.handle, isReply: Boolean(post.replyTo) };
+    const asked = { labels: post.labels, handle: post.author.handle, isReply: isReply(post) };
     let withImages = true;
     let failures = 0;
     for (let attempt = 0; attempt < 6; attempt++) {

@@ -26,7 +26,7 @@ Oxlint (lint, type-aware), Oxfmt (format) and TypeScript.
 
 ```
 page script (X's own page)
- sites/x-follows.ts  who you follow
+ sites/x-data.ts  who you follow, X's labels
         │ DOM events
         ▼
 content script (x.com)            service worker                    Gemini
@@ -51,22 +51,27 @@ content script (x.com)            service worker                    Gemini
   yet. A post that passes along something its note calls fake or bait is judged as junk of the
   same kind, unless it corrects it. A note that only adds context changes nothing. A note that
   turns up later changes the cache key, so the post is asked about again.
-- **About 8¢ per 1,000 posts.** A text post is about 630 input tokens and each image adds 280
-  (up to two are sent, at low resolution), which averages 840 on a real feed. Output is free.
-  The free tier's 50,000 tokens a minute covers about 60 posts a minute; when it runs out, the
+- **About 10¢ per 1,000 posts.** A text post is about 770 input tokens and each image adds 280
+  (up to two are sent, at low resolution), which averages 970 on a real feed. Output is free.
+  The free tier's 50,000 tokens a minute covers about 50 posts a minute; when it runs out, the
   posts on screen are checked first once it's back.
 - **Google is only asked about posts that could be hidden.** Not your own posts, not posts
-  from people you follow or have marked "Always show", not the post a page is about, not ads
-  (X marks those itself), and not posts you scrolled past before they finished loading. A reply
+  from people you follow or have marked "Always show", not the post a page is about, not what
+  X labels an ad or, while that category is on, "Made with AI", and not posts you scrolled past
+  before they finished loading. A reply
   or a quote still carries the text of the post it answers, whoever wrote it, because reply
   spam can't be judged without it. The rules for what's never hidden live in `core/policy.ts`,
   next to the ones for what is, and `core/policy.test.ts` holds them to it.
-- **Who you follow comes from X's own data.** Posts on the page don't say whether you follow
-  their author, but the data X loads for them does. A small script in X's page
-  (`sites/x-follows.ts`, loaded from `content/page.ts` before X's own scripts) reads X's API
-  responses as they arrive and passes each author's handle and follow status, nothing else, to
-  the content script. Ads from people you follow are still hidden, and the setting can be
-  switched off.
+- **Who you follow, and X's labels, come from X's own data.** Posts on the page don't say
+  whether you follow their author, and the labels X puts under them ("Paid partnership", "Made
+  with AI") have no stable markup, but the data X loads for them has both. A small script in
+  X's page (`sites/x-data.ts`, loaded from `content/page.ts` before X's own scripts) reads X's
+  API responses as they arrive and passes each author's handle and follow status, and each
+  labeled post's id and labels, nothing else, to the content script. What X labels is hidden
+  without asking Google: a paid partnership as an ad, even from people you follow, and a post
+  with media X detects as AI-made as "Made with AI", unless you follow its author or switch
+  that off. X finds AI media from the provenance data AI tools embed, so most AI images carry
+  no label, and AI slop still judges them.
 - **One list, from every tab.** The content script reports each post once it's checked, and
   the service worker keeps them in `chrome.storage.session` (`background/checked.ts`), newest
   3,000. The side panel judges that list against the current settings, so the list, every
@@ -109,31 +114,45 @@ There are two kinds of test post, in the same format (`eval/LABELING.md`):
 - `eval/posts.jsonl` has 326 written to order, among them hard negatives (strong opinions,
   real breaking news, people sharing their own work, real posts under a community note) and
   prompt-injection attempts.
-- `eval/real/*.jsonl` holds posts collected from a real timeline, reply threads, spam-prone
+- `eval/real/*.jsonl` holds posts collected from real timelines, reply threads, news accounts,
   searches and X's list of posts with community notes, with their images. Those are other
   people's posts, so the folder is gitignored; put your own there. Real posts are what the
   wording should be tuned on. The written ones are easier than a real feed and flatter every
   design.
 
-With the current wording, on 918 real posts and the 326 written ones. Each cell is real posts
-hidden by mistake / junk caught, counting only posts with a firm label:
+With the current wording, on 1,989 real posts and the 326 written ones. Each cell is real
+posts hidden by mistake / junk caught, counting only posts with a firm label:
 
-| posts from                 | real | junk | Relaxed | Balanced | Strict  |
-| -------------------------- | ---- | ---- | ------- | -------- | ------- |
-| a timeline                 | 207  | 26   | 0 / 22  | 1 / 25   | 3 / 26  |
-| a later timeline, held out | 100  | 15   | 0 / 9   | 1 / 12   | 1 / 14  |
-| reply threads              | 221  | 12   | 0 / 4   | 0 / 9    | 1 / 10  |
-| spam-prone searches        | 16   | 69   | 0 / 68  | 1 / 69   | 2 / 69  |
-| posts with a note          | 4    | 13   | 0 / 12  | 1 / 13   | 1 / 13  |
-| posts quoting those        | 17   | 41   | 0 / 16  | 0 / 24   | 0 / 28  |
-| written to order           | 171  | 151  | 0 / 136 | 1 / 143  | 1 / 147 |
+| posts from                      | real | junk | Relaxed | Balanced | Strict  |
+| ------------------------------- | ---- | ---- | ------- | -------- | ------- |
+| a timeline                      | 207  | 26   | 0 / 21  | 2 / 24   | 2 / 25  |
+| a later timeline, held out      | 100  | 15   | 0 / 9   | 1 / 12   | 2 / 14  |
+| reply threads                   | 221  | 12   | 0 / 6   | 0 / 9    | 1 / 10  |
+| spam-prone searches             | 16   | 69   | 0 / 63  | 1 / 69   | 2 / 69  |
+| posts with a note               | 4    | 13   | 0 / 10  | 0 / 13   | 1 / 13  |
+| posts quoting those             | 17   | 41   | 0 / 13  | 0 / 23   | 0 / 30  |
+| a tech-heavy timeline           | 153  | 7    | 1 / 3   | 2 / 4    | 5 / 5   |
+| news accounts and news searches | 214  | 16   | 2 / 14  | 7 / 16   | 17 / 16 |
+| AI searches                     | 33   | 34   | 0 / 34  | 0 / 34   | 1 / 34  |
+| opinion and hype searches       | 48   | 3    | 0 / 3   | 0 / 3    | 1 / 3   |
+| replies under viral news        | 163  | 10   | 0 / 2   | 0 / 3    | 2 / 3   |
+| the last five, 3 in 10 held out | 249  | 31   | 1 / 24  | 3 / 24   | 7 / 24  |
+| written to order                | 171  | 151  | 0 / 134 | 1 / 141  | 1 / 146 |
 
-The held-out timeline was collected after the wording was frozen and labeled in one pass, so
-it's a sanity check rather than a benchmark; it agrees with the first. On the three sets that
-look like everyday reading (both timelines and the replies), Balanced hides 2 of 528 real
-posts and catches 46 of 53 junk ones, Strict hides 5 and catches 50, and Relaxed hides none
-and catches 35. What gets through at Balanced is mostly borderline: clips behind a vague
-caption that might be a fan's, and generic-sounding replies.
+The later timeline was collected after the wording of the time was frozen and labeled in one
+pass, so it's a sanity check rather than a benchmark; it agrees with the first. The last six
+sets were collected together in November 2026, and 3 in 10 of them, picked by id before any
+were read, were held out of the tuning. They were labeled before the model's answers were
+looked at, and the posts where labels and model disagreed were checked again.
+
+On the five sets that look like everyday reading (the three timelines and both sets of
+replies), Balanced hides 5 of 844 real posts and catches 52 of 70 junk ones, Strict hides 12
+and catches 57, and Relaxed hides 1 and catches 41. What gets through at Balanced is mostly
+borderline: clips behind a vague caption that might be a fan's, generic-sounding replies, and
+brand accounts replying to a viral post with a meme. News accounts are the hardest real posts
+to keep: of the 7 Balanced still hides there, most have pictures the model takes for AI
+images (a new film's poster, a gallery of Bond actors with one it hasn't heard of), and the
+rest are dramatic BREAKING headlines and teasers.
 
 The notes are what the last two real sets measure. With the notes left out of the input,
 Balanced catches 8 of those 13 noted posts instead of all 13, and 5 of the 41 posts quoting
@@ -162,6 +181,27 @@ Things learned the hard way, before changing the wording:
 - The rule for a post quoting a noted post works in the input, right after the note. Moved
   into the question, for those posts only, it caught 12 of the 41 junk ones at Balanced
   instead of 24, and lowered the junk score of 30 of them.
+- The model judges news against what it knows, and what it knows is older than the feed.
+  Headlines about things it hadn't heard of (a game's release, an IPO, a CEO leaving) read as
+  made up, so AI slop or fake BREAKING, and the old wording asked for exactly that judgment.
+  Saying in the question that posts are recent and that whether a claim is true isn't its call,
+  saying in `fine` that a headline that says what happened is news even with BREAKING, and
+  calling only melodramatic all-caps BREAKING clickbait: across every set, Balanced hid 19 real
+  posts instead of 49 (8 of 214 from news accounts instead of 28) and caught 376 junk posts
+  instead of 378. Notes are still how a post is shown to be fake.
+- That line about recent posts works in the question. Left only in `fine`, Balanced hid 31.
+- Telling the AI slop option to judge images by how they look, not by whether it knows what
+  they show, hid 34 instead of 19. Naming pictures in the question's line hid 17, but caught
+  10 fewer at Strict and fewer posts quoting a noted fake (20 of 41 instead of 22).
+- Naming brands that answer a viral post with a meme under reply spam changed almost nothing:
+  from a name and a quip, the model can't tell a brand from a person.
+- A reply to the author's own post, such as the next part of a thread or a source link, was
+  judged as a reply and called reply spam. Saying it continues the author's thread, and not
+  offering reply spam for it, hid 3 fewer real posts.
+- Ads used to be only what X marks as promoted, so a news account's pitch for its own paid
+  service got through. Described as "an ad … or a paid partnership", the ads option caught all
+  7 but called 6 startups' launch posts ads too, and hid 33 real posts instead of 19. As a sales
+  pitch that isn't a maker announcing what they built, it caught all 7 and hid 17.
 
 After moving a threshold, update `TRADEOFF` in `taxonomy.ts`, which is what the side panel
 tells people each strictness costs, and the numbers in the README.
@@ -169,7 +209,7 @@ tells people each strictness costs, and the numbers in the README.
 ## Adding a site
 
 1. Implement `SiteAdapter` (`src/sites/site.ts`): find post elements, read one into a `Post`,
-   and name the element to collapse. `src/sites/x.ts` is the reference. `watchFollows` is
+   and name the element to collapse. `src/sites/x.ts` is the reference. `watchData` is
    optional; it needs a part in the site's own page, listed in `IN_PAGE` in
    `src/content/page.ts`.
 2. Add it to `SITES` in `src/content/index.ts`.

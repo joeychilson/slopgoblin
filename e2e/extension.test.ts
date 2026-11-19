@@ -21,6 +21,20 @@ const POSTS: MockPost[] = [
     note: "AI-made. [ai_slop .7]",
   },
   { id: "110", handle: "replier", name: "Reply Guy", text: "So true!! [reply_spam .9]" },
+  {
+    id: "111",
+    handle: "imagine",
+    name: "Grok Fan",
+    text: "Made this [ai_slop .3]",
+    label: "Made with AI",
+  },
+  {
+    id: "112",
+    handle: "sponsored",
+    name: "Streamer",
+    text: "Our sponsor",
+    label: "Paid partnership",
+  },
 ];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,6 +84,8 @@ describe("on X", { timeout: 30_000 }, () => {
     await shows(x, "rager", "collapsed", /^Ragebait from Rage Farm/);
     await shows(x, "noted", "collapsed", /^AI slop from Noted News/);
     await shows(x, "brand", "collapsed", /^Ad from Big Brand/);
+    await shows(x, "sponsored", "collapsed", /^Ad from Streamer/);
+    await shows(x, "imagine", "collapsed", /^Made with AI from Grok Fan/);
     // A name that's all emoji gives way to the handle, and a porn bot's avatar isn't shown.
     await shows(x, "nsfwbot", "collapsed", /^NSFW from @nsfwbot/);
     expect(await x.locator(".sg-bar:has-text('@nsfwbot') .sg-ghost").count()).toBe(0);
@@ -79,7 +95,7 @@ describe("on X", { timeout: 30_000 }, () => {
   });
 
   it("asks only about posts it could hide, once each", async () => {
-    // Not the reader's own, not people they follow, not ads.
+    // Not the reader's own, not people they follow, not ads, not what X labels made with AI.
     await poll(() => m.sent.map(handleIn).sort((a = "", b = "") => a.localeCompare(b))).toEqual([
       "alice",
       "maybe",
@@ -139,6 +155,13 @@ describe("on X", { timeout: 30_000 }, () => {
     }
   });
 
+  it("offers no way to argue with X's own label", async () => {
+    await click(x, "imagine", ".sg-row");
+    await shows(x, "imagine", "revealed", /^Made with AI Hide$/);
+    await click(x, "imagine", "[data-sg-action=hide]");
+    await shows(x, "imagine", "collapsed");
+  });
+
   it("ignores a bar a script fakes", async () => {
     await x.evaluate(() => {
       const bar = document.createElement("div");
@@ -195,7 +218,7 @@ describe("on X", { timeout: 30_000 }, () => {
   it("asks about a reply first seen alone, once it shows as one", async () => {
     // Only reply spam on: alone, the reply isn't worth asking about.
     const off = { ragebait: false, ai_slop: false, clickbait: false, engagement_bait: false };
-    await settings(m.sw, { categories: { ...off, nsfw: false, grift: false } });
+    await settings(m.sw, { categories: { ...off, nsfw: false, grift: false, ad: false } });
     const reply = {
       id: "401",
       handle: "replybot",
@@ -211,19 +234,38 @@ describe("on X", { timeout: 30_000 }, () => {
     }
   });
 
+  it("asks about a post X labels made with AI while that switch is off", async () => {
+    await settings(m.sw, { categories: { made_with_ai: false } });
+    try {
+      await poll(() => m.sent.map(handleIn)).toContain("imagine");
+      await shows(x, "imagine", "shown");
+    } finally {
+      await settings(m.sw, { categories: {} });
+    }
+    await shows(x, "imagine", "collapsed", /^Made with AI/);
+  });
+
   it("lists what's hidden in the side panel, and what each strictness would hide", async () => {
     // The toolbar badge counts the same list, once every verdict so far has reached it.
-    await poll(() => m.sw.evaluate(() => chrome.action.getBadgeText({}))).toBe("7");
+    await poll(() => m.sw.evaluate(() => chrome.action.getBadgeText({}))).toBe("9");
     panel = await openPanel(m.ctx, m.extension);
     const counts = () =>
       panel.$$eval(".segment", (all) =>
         all.map((s) => (s as HTMLElement).innerText.replace(/\s+/g, " ")).join(),
       );
-    await poll(counts).toBe("Relaxed 6,Balanced 7,Strict 8");
+    await poll(counts).toBe("Relaxed 8,Balanced 9,Strict 10");
     // The list arriving isn't a post hidden while the reader watches.
     expect(await chomping(panel)).toBe(false);
     const list = await panel.innerText(".hidden");
-    for (const name of ["Rage Farm", "Growth Guru", "Big Brand", "Noted News", "Reply Bot"]) {
+    for (const name of [
+      "Rage Farm",
+      "Growth Guru",
+      "Big Brand",
+      "Streamer",
+      "Grok Fan",
+      "Noted News",
+      "Reply Bot",
+    ]) {
       expect(list).toContain(name);
     }
   });

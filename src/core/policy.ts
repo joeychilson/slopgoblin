@@ -1,29 +1,37 @@
 import type { Scores } from "./decisions.ts";
+import type { Label } from "./post.ts";
 import type { Settings } from "./settings.ts";
-import { CATEGORIES, CATEGORY, THRESHOLD, type CategoryId } from "./taxonomy.ts";
+import { ASKED, CATEGORIES, CATEGORY, THRESHOLD, type CategoryId } from "./taxonomy.ts";
 
 export interface Verdict {
-  /** The likeliest of the categories switched on. */
+  /** The likeliest of the categories switched on, or the site's own label. */
   category: CategoryId;
   /** The probability the post is junk, of any kind. */
   score: number;
+  /** The site labeled it itself; the model wasn't asked. */
+  labeled?: true;
 }
 
 /**
  * How a verdict reads, the same in the feed and in the side panel: the category's label ("Ad"
- * for an ad), hedged with "Possibly" when only Strict would hide the post.
+ * for an ad), the same mid-sentence ("Not an ad", "Possibly ragebait"), and whether it's hedged
+ * with "Possibly" because only Strict would hide the post.
  */
 export function reason({ category, score }: Verdict) {
+  const label = category === "ad" ? "Ad" : CATEGORY[category].label;
   return {
-    label: category === "ad" ? "Ad" : CATEGORY[category].label,
+    label,
+    // "AI slop" and "NSFW" keep their capitals.
+    midSentence:
+      category === "ad" ? "an ad" : label.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase()),
     possibly: score < THRESHOLD.balanced,
   };
 }
 
-/** What a post's verdict rests on: the model's answer, and what's known about who posted it. */
+/** What a post's verdict rests on: the model's answer, the site's labels, and who posted it. */
 export interface Judged {
   scores: Scores;
-  isAd: boolean;
+  labels: Label[];
   handle: string;
   /** The reader let it through. */
   notSlop?: boolean;
@@ -36,10 +44,9 @@ export interface Judged {
  * from cached scores without asking the model again.
  */
 export function judge(post: Judged, settings: Settings): Verdict | null {
-  if (!settings.enabled || post.notSlop || alwaysShown(post, settings)) return null;
-  // X marks ads itself. Following an account doesn't make its ads welcome.
-  if (post.isAd) return settings.categories.ad ? { category: "ad", score: 1 } : null;
-  if (shownAsFollowed(post, settings)) return null;
+  if (post.notSlop) return null;
+  const known = settled(post, settings);
+  if (known) return known === "shown" ? null : known;
 
   // A post that's several kinds has its chance split between them. It's hidden when it's junk
   // and at least half of that is kinds switched on, so switching a kind off shows the posts that
@@ -64,27 +71,36 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
 export const REFUSED: Scores = { nsfw: 1 };
 
 /**
- * Whether the model's answer could change anything. Ads are marked by the site, some authors
- * are never hidden, and some categories are only for replies, so Google isn't asked about those.
+ * Whether the model's answer could change anything. Some posts are shown whatever it says, the
+ * site's own labels hide others, and some categories are only for replies, so Google isn't
+ * asked about those.
  */
 export function needsScores(
   post: Omit<Judged, "scores"> & { isReply: boolean },
   settings: Settings,
 ) {
   return (
-    settings.enabled &&
-    !post.isAd &&
-    !alwaysShown(post, settings) &&
-    !shownAsFollowed(post, settings) &&
-    CATEGORIES.some(
-      (c) =>
-        "describes" in c && settings.categories[c.id] && (post.isReply || !("repliesOnly" in c)),
-    )
+    settled(post, settings) === undefined &&
+    ASKED.some((c) => settings.categories[c.id] && (post.isReply || !("repliesOnly" in c)))
   );
 }
 
-const alwaysShown = ({ handle }: { handle: string }, settings: Settings) =>
-  settings.trusted.includes(handle.toLowerCase());
+/**
+ * What's decided before the model's answer, in this order. Nothing is hidden while filtering is
+ * off, or from an author the reader trusts. The site's ad label hides a post, even from someone
+ * the reader follows: following an account doesn't make its ads welcome. Nothing else from them
+ * is hidden. Then the site's other labels hide. An ad shown because ads are off isn't asked
+ * about. Undefined when it's up to the model.
+ */
+function settled(post: Omit<Judged, "scores">, settings: Settings): Verdict | "shown" | undefined {
+  if (!settings.enabled || settings.trusted.includes(post.handle.toLowerCase())) return "shown";
+  const ad = post.labels.includes("ad");
+  if (ad && settings.categories.ad) return labeled("ad");
+  if (settings.trustFollowing && post.followed === true) return "shown";
+  if (post.labels.includes("made_with_ai") && settings.categories.made_with_ai) {
+    return labeled("made_with_ai");
+  }
+  return ad ? "shown" : undefined;
+}
 
-const shownAsFollowed = ({ followed }: { followed?: boolean }, settings: Settings) =>
-  settings.trustFollowing && followed === true;
+const labeled = (category: Label): Verdict => ({ category, score: 1, labeled: true });

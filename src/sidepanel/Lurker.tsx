@@ -31,12 +31,12 @@ const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").match
 export function Lurker(props: {
   /** Filtering is on. */
   awake: boolean;
-  /** How many posts are hidden; each new one gets a chomp. */
+  /** How many posts are hidden, once the list has loaded; each new one gets a chomp. */
   fed?: number;
   /** Covers its eyes without falling asleep, for while a key is being typed. */
   shy?: boolean;
 }) {
-  const { awake, fed = 0, shy } = props;
+  const { awake, fed, shy } = props;
   const drawing = useRef<SVGSVGElement>(null);
   const jaw = useRef<SVGGElement>(null);
   const hands = useRef<HTMLSpanElement>(null);
@@ -47,7 +47,9 @@ export function Lurker(props: {
   const open = awake && !shy;
 
   useEffect(() => {
-    if (fed > lastFed.current && !reducedMotion()) {
+    // The list arriving as the panel opens isn't news.
+    const before = lastFed.current;
+    if (fed !== undefined && before !== undefined && fed > before && !reducedMotion()) {
       jaw.current?.animate(
         [
           { transform: "none" },

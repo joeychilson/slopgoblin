@@ -53,6 +53,22 @@ export function questionKey(post: PostContent) {
   return notes.length ? `${key}.${hash(notes.join("|"))}` : key;
 }
 
+/**
+ * Whether `next` shows a post with more than it was judged on as `prev`: the post it replies to,
+ * a note, or a note's rating. Then it's worth asking again; losing one isn't.
+ */
+export function addsContext(next: PostContent, prev: PostContent) {
+  const context = (post: PostContent) => [
+    post.replyTo,
+    post.readerNote,
+    post.readerNote?.rated,
+    post.quote?.readerNote,
+    post.quote?.readerNote?.rated,
+  ];
+  const before = context(prev);
+  return context(next).some((part, i) => part && !before[i]);
+}
+
 type DecisionErrorKind = "auth" | "rate" | "blocked" | "media" | "transient" | "fatal";
 
 export class DecisionError extends Error {
@@ -121,7 +137,7 @@ function describePost(post: PostContent, imageCount: number): string {
     // refusing posts over a slur they contain.
     "A post from an X (Twitter) feed. Judge the post itself; a parent or quoted post is only context.",
     "",
-    `Author: ${post.author.name} (@${post.author.handle})`,
+    `Author: ${defuse(post.author.name)} (@${post.author.handle})`,
   ];
   const { replyTo, quote } = post;
   if (replyTo) {
@@ -140,7 +156,7 @@ function describePost(post: PostContent, imageCount: number): string {
       );
     }
   }
-  if (post.link) lines.push(`Link card: ${clip(post.link, 200)}`);
+  if (post.link) lines.push(`Link card: ${defuse(clip(post.link, 200))}`);
   if (imageCount) lines.push(`Attached image${imageCount > 1 ? "s" : ""} follow.`);
   return lines.join("\n");
 }
@@ -153,9 +169,10 @@ function describeNote(note: ReaderNote, target: string) {
 }
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
-/** Wraps text from the site. A tag inside it is defused, so it can't close this one early. */
+/** Text from the site with anything shaped like a tag defused, so it can't close or fake ours. */
+const defuse = (text: string) => text.replace(/<(\s*\/?\s*[a-z][^<>]*)>/gi, "‹$1›");
 const tag = (name: string, text: string, max: number) =>
-  `<${name}>\n${clip(text, max).replace(/<(\/?\w+)>/g, "‹$1›")}\n</${name}>`;
+  `<${name}>\n${defuse(clip(text, max))}\n</${name}>`;
 
 function imageMime(uri: string): string {
   const url = new URL(uri);

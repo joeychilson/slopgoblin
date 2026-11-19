@@ -131,13 +131,14 @@ export function sendToTab<T>(tabId: number, message: TabMessage): Promise<T | un
   return chrome.tabs.sendMessage<TabMessage, T>(tabId, message).catch(() => undefined);
 }
 
-/** Re-renders every second while `active`, for countdowns. */
+/** The time, with a re-render every second while `active`, for countdowns. */
 export function useTicker(active: boolean) {
-  const [now, setNow] = useState(Date.now());
+  const [, setTicks] = useState(0);
   useEffect(() => {
     if (!active) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => setTicks((n) => n + 1), 1000);
     return () => clearInterval(timer);
   }, [active]);
-  return now;
+  // Read on each render, so a countdown that starts while the panel is open starts right.
+  return Date.now();
 }

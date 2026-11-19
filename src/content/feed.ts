@@ -1,5 +1,5 @@
 import type { CheckedPost } from "../core/checked.ts";
-import type { Scores } from "../core/decisions.ts";
+import { addsContext, type Scores } from "../core/decisions.ts";
 import type { ClassifyResponse, RuntimeMessage, TabMessage, TabState } from "../core/messages.ts";
 import { judge, needsScores, type Judged, type Verdict } from "../core/policy.ts";
 import type { Post } from "../core/post.ts";
@@ -58,6 +58,8 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   chrome.runtime.onMessage.addListener(onTabMessage);
   observer.observe(document.body, { childList: true, subtree: true });
   scan();
+  // Tells the side panel this tab is running, before the site has shown a post.
+  changed();
 
   function scan() {
     let found = false;
@@ -76,10 +78,12 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       if (site.isFocused(el) || !site.container(el)) continue;
       el.setAttribute(ID_ATTR, post.id);
       const t = posts.get(post.id) ?? track(post);
-      // A note can turn up on a post that was judged without one. It's worth asking again.
-      if (t.status === "done" && hasNote(post) && !hasNote(t.post)) {
+      // The post it replies to, or a note, can turn up after the post was first read without it.
+      // That can make it worth asking about (a reply, when only replies are filtered), or worth
+      // asking again.
+      if (t.status !== "pending" && addsContext(post, t.post)) {
         t.post = post;
-        t.status = "idle";
+        if (t.status === "done") t.status = "idle";
       }
       if (wantsRequest(t)) void request(t);
       show(t, el, true);
@@ -293,6 +297,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
           setNotSlop(t, false, true);
           void send({ type: "not-slop", id: t.post.id, notSlop: false });
         }
+        t.letThrough = undefined;
         break;
     }
   }
@@ -305,10 +310,6 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
 
   function handleOf(t: Tracked) {
     return t.post.author.handle.toLowerCase();
-  }
-
-  function hasNote(post: Post) {
-    return Boolean(post.readerNote ?? post.quote?.readerNote);
   }
 
   function onTabMessage(

@@ -24,8 +24,15 @@ function open(): Promise<IDBDatabase> {
       if (req.result.objectStoreNames.contains(STORE)) req.result.deleteObjectStore(STORE);
       req.result.createObjectStore(STORE, { keyPath: "id" }).createIndex("seen", "seen");
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      // Chrome closes it when the reader clears site data. It's opened again on next use.
+      req.result.onclose = () => (db = undefined);
+      resolve(req.result);
+    };
+    req.onerror = () => {
+      db = undefined;
+      reject(req.error);
+    };
   });
   return db;
 }

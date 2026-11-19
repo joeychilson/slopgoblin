@@ -30,13 +30,18 @@ export function setApiKey(key: string | undefined, isNew: boolean) {
   void setStatus({ kind: "ok" });
 }
 
-/** Scores a post, from cache when possible. Concurrent calls for one post share a request. */
+/**
+ * Scores a post, from cache when possible. Concurrent calls for one post share a request, unless
+ * they'd ask a different question: one tab can show the post a reply answers, another not.
+ */
 export function classify(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
-  if (cachedOnly) return run(post, true);
-  let pending = inflight.get(post.id);
+  const key = questionKey(post);
+  if (cachedOnly) return run(post, key, true);
+  const asking = `${post.id} ${key}`;
+  let pending = inflight.get(asking);
   if (!pending) {
-    pending = run(post, false).finally(() => inflight.delete(post.id));
-    inflight.set(post.id, pending);
+    pending = run(post, key, false).finally(() => inflight.delete(asking));
+    inflight.set(asking, pending);
   }
   return pending;
 }
@@ -46,8 +51,7 @@ export async function setNotSlop(id: string, notSlop: boolean) {
   if (entry) await putEntry({ ...entry, notSlop });
 }
 
-async function run(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
-  const key = questionKey(post);
+async function run(post: Post, key: string, cachedOnly: boolean): Promise<ClassifyResponse> {
   let entry = await getEntry(post.id);
   if (entry?.key !== key) {
     if (cachedOnly) return { uncached: true };

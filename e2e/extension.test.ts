@@ -107,6 +107,63 @@ describe("side panel tab state", { timeout: 30_000 }, () => {
       await m.ctx.close();
     }
   });
+
+  it("does not flash Not on X while an X tab reloads", async () => {
+    const m = await launch([]);
+    let holdReload = false;
+    let finishReload!: () => void;
+    const reloadHeld = new Promise<void>((resolve) => (finishReload = resolve));
+    await m.ctx.route("https://x.com/home", async (route) => {
+      if (holdReload) {
+        await route.fulfill({
+          contentType: "text/html",
+          body: '<!doctype html><html><body><script src="https://x.com/slow.js"></script></body></html>',
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await m.ctx.route("https://x.com/slow.js", async (route) => {
+      await reloadHeld;
+      await route.fulfill({ contentType: "application/javascript", body: "" });
+    });
+    try {
+      const tab = await m.ctx.newPage();
+      await tab.goto("https://x.com/home");
+      const panel = await openPanel(m.ctx, m.extension);
+      await poll(() => panel.innerText(".summary")).toMatch(/Nothing checked yet/);
+
+      await panel.evaluate(() => {
+        const seen: string[] = [];
+        const record = () => {
+          const text = document.querySelector(".summary h2")?.textContent ?? "";
+          if (text && seen.at(-1) !== text) seen.push(text);
+        };
+        record();
+        new MutationObserver(record).observe(document.body, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+        (window as unknown as { __headings: string[] }).__headings = seen;
+      });
+
+      holdReload = true;
+      const reloading = tab.reload();
+      await sleep(500);
+      finishReload();
+      await reloading;
+      await sleep(300);
+
+      const seen = await panel.evaluate(
+        () => (window as unknown as { __headings: string[] }).__headings,
+      );
+      expect(seen).toEqual(["Nothing checked yet"]);
+    } finally {
+      finishReload();
+      await m.ctx.close();
+    }
+  });
 });
 
 describe("on X", { timeout: 30_000 }, () => {

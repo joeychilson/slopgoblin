@@ -10,7 +10,11 @@ import type { ActiveTab } from "./hooks.ts";
  * strictness levels are the count: each one shows how many of them it would hide, and the
  * chosen one is what's hidden now.
  */
-export function Summary(props: { tab?: ActiveTab; settings: Settings; checked: CheckedPost[] }) {
+export function Summary(props: {
+  tab: ActiveTab | null;
+  settings: Settings;
+  checked: CheckedPost[];
+}) {
   const { tab, settings, checked } = props;
   // Strictness changes nothing while filtering is off, so it isn't offered.
   if (!settings.enabled) {
@@ -23,9 +27,9 @@ export function Summary(props: { tab?: ActiveTab; settings: Settings; checked: C
     );
   }
   const counts = checked.length ? hiddenAtEach(checked, settings) : undefined;
+  const onX = Boolean(tab?.url?.startsWith("https://x.com/"));
   // Tabs opened before the extension was installed don't have the content script yet.
-  const reloadId =
-    tab?.url?.startsWith("https://x.com/") && !tab.state && !tab.loading ? tab.id : undefined;
+  const reloadId = onX && tab && !tab.state && !tab.loading ? tab.id : undefined;
   return (
     <section class="summary" aria-label="Summary">
       {reloadId !== undefined ? (
@@ -37,7 +41,7 @@ export function Summary(props: { tab?: ActiveTab; settings: Settings; checked: C
         </Message>
       ) : checked.length ? (
         <Caption checked={checked.length} pending={tab?.state?.pending ?? 0} />
-      ) : tab?.state ? (
+      ) : onX ? (
         <Message title="Nothing checked yet">Posts get checked as you scroll.</Message>
       ) : (
         <Message

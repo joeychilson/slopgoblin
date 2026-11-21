@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import type { HiddenPost } from "../core/checked.ts";
 import type { RuntimeMessage } from "../core/messages.ts";
 import { reason } from "../core/policy.ts";
@@ -26,8 +26,8 @@ export function HiddenList(props: {
 }) {
   const { tabId, hidden } = props;
   const [open, setOpen] = useState<string | null>(null);
-  const firstIds = useRef<string[] | null>(null);
-  firstIds.current ??= hidden.map(({ post }) => post.id);
+  const firstOrder = useRef<Map<string, number> | null>(null);
+  firstOrder.current ??= new Map(hidden.map(({ post }, i) => [post.id, Math.min(i, 10)]));
   return (
     <section class="hidden" aria-labelledby="hidden-title">
       <div class="list-head">
@@ -40,7 +40,7 @@ export function HiddenList(props: {
             key={item.post.id}
             item={item}
             tabId={tabId}
-            order={Math.min(firstIds.current!.indexOf(item.post.id), 10)}
+            order={firstOrder.current!.get(item.post.id) ?? -1}
             open={open === item.post.id}
             onToggle={(next) => setOpen(next ? item.post.id : null)}
           />
@@ -81,7 +81,7 @@ function Item(props: {
   const isNsfw = verdict.category === "nsfw";
   const { label, midSentence, possibly } = reason(verdict);
   const name = displayName(post);
-  const actionsId = `actions-${post.id}`;
+  const actionsId = useId();
 
   // Once it has opened, a row near the bottom scrolls up into view.
   useEffect(() => {

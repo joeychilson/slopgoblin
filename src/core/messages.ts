@@ -13,12 +13,15 @@ export type RuntimeMessage =
 export type ClassifyResponse =
   | { scores: Scores; notSlop: boolean }
   | { unavailable: true }
+  /** No working API key yet; the tab stops retrying until one is saved. */
+  | { needsKey: true }
   /** Answer to `cachedOnly` when the post hasn't been judged yet. */
   | { uncached: true };
 
 /** Sent to a tab's content script, by the side panel or by the service worker passing on a let-through. */
 export type TabMessage =
   | { type: "get-tab-state" }
+  | { type: "retry" }
   | { type: "reveal"; id: string }
   | { type: "not-slop"; id: string; notSlop: boolean };
 

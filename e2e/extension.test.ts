@@ -480,6 +480,69 @@ describe("with a key Google rejects", { timeout: 60_000 }, () => {
   });
 });
 
+describe("when rate-limited or missing a key", { timeout: 60_000 }, () => {
+  const four: MockPost[] = [1, 2, 3, 4].map((n) => ({
+    id: `50${n}`,
+    handle: `rager${n}`,
+    name: `Rager ${n}`,
+    text: `Junk ${n} [ragebait .9]`,
+  }));
+
+  it("wakes paused requests when the API key is replaced", async () => {
+    const m = await launch(four, (route) => {
+      if (route.request().headers()["x-goog-api-key"] === "test-key") {
+        return route.fulfill({
+          status: 429,
+          headers: { "retry-after": "60" },
+          json: { error: { message: "Rate limit exceeded" } },
+        });
+      }
+      return route.fulfill({
+        json: { answers: { kind: { probabilities: { ragebait: 0.9, fine: 0.1 } } } },
+      });
+    });
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(4);
+      await m.sw.evaluate(() => chrome.storage.local.set({ apiKey: "fresh-key" }));
+      for (const { handle } of four) {
+        await expect
+          .poll(() => state(page, handle), { timeout: 4_000 })
+          .toMatchObject({
+            sg: "collapsed",
+          });
+      }
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("resumes immediately when an API key is saved after opening X without one", async () => {
+    const m = await launch(four.slice(0, 2));
+    try {
+      await m.sw.evaluate(() => chrome.storage.local.remove("apiKey"));
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await sleep(1500);
+      expect(m.sent).toEqual([]);
+      await m.sw.evaluate(() => chrome.storage.local.set({ apiKey: "good-key" }));
+      await expect
+        .poll(() => state(page, "rager1"), { timeout: 4_000 })
+        .toMatchObject({
+          sg: "collapsed",
+        });
+      await expect
+        .poll(() => state(page, "rager2"), { timeout: 4_000 })
+        .toMatchObject({
+          sg: "collapsed",
+        });
+    } finally {
+      await m.ctx.close();
+    }
+  });
+});
+
 /** Whether the goblin is mid-chomp: an animation on its jaw that isn't one of its CSS ones. */
 function chomping(panel: Page) {
   return panel.evaluate(() =>

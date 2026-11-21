@@ -82,7 +82,8 @@ if (missing.length) console.log(`Asking about ${missing.length} of ${all.length}
 
 await runPool(missing, 8, async (row) => {
   let withImages = true;
-  for (let attempt = 0; ; attempt++) {
+  let failures = 0;
+  for (;;) {
     try {
       cache[cacheKey(row)] = await decide(apiKey, row, withImages);
     } catch (error) {
@@ -91,8 +92,8 @@ await runPool(missing, 8, async (row) => {
         await sleep(error.retryAfterMs);
         continue;
       }
-      if (error.kind === "transient" && attempt < 3) {
-        await sleep(2000 * 2 ** attempt);
+      if (error.kind === "transient" && failures < 3) {
+        await sleep(2000 * 2 ** failures++);
         continue;
       }
       if (error.kind === "media" && withImages) {

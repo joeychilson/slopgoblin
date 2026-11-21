@@ -16,6 +16,7 @@ const STALE_MS = 30_000;
 let apiKey: string | undefined;
 let keyRejected = false;
 let pausedUntil = 0;
+const paused = new Set<() => void>();
 let active = 0;
 const waiting: (() => void)[] = [];
 const inflight = new Map<string, Promise<ClassifyResponse>>();
@@ -27,6 +28,7 @@ export function setApiKey(key: string | undefined, isNew: boolean) {
   if (!isNew) return;
   // The old key's rate limit isn't this one's.
   pausedUntil = 0;
+  wakePaused();
   void setStatus({ kind: "ok" });
 }
 
@@ -54,8 +56,10 @@ export async function setNotSlop(id: string, notSlop: boolean) {
 async function run(post: Post, key: string, cachedOnly: boolean): Promise<ClassifyResponse> {
   let entry = await getEntry(post.id);
   if (entry?.key !== key) {
+    if (!apiKey || keyRejected) return { needsKey: true };
     if (cachedOnly) return { uncached: true };
     const answer = await ask(post);
+    if (answer === "unkeyed") return { needsKey: true };
     if (answer === "unavailable") return { unavailable: true };
     const scores = answer === "blocked" ? REFUSED : answer;
     // Read again: the reader may have let the post through while it waited for an answer.
@@ -66,7 +70,7 @@ async function run(post: Post, key: string, cachedOnly: boolean): Promise<Classi
   return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
 }
 
-async function ask(post: Post): Promise<Scores | "blocked" | "unavailable"> {
+async function ask(post: Post): Promise<Scores | "blocked" | "unkeyed" | "unavailable"> {
   const queued = Date.now();
   await acquire();
   try {
@@ -75,13 +79,14 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unavailable"> {
     let withImages = true;
     let failures = 0;
     for (let attempt = 0; attempt < 6; attempt++) {
-      while (pausedUntil > Date.now()) await sleep(pausedUntil - Date.now());
+      while (pausedUntil > Date.now() && apiKey && !keyRejected) await waitPause();
       // Filtering may have been switched off, or the author marked "Always show", meanwhile.
-      if (!apiKey || keyRejected || !needsScores(asked, await loadSettings())) {
-        return "unavailable";
-      }
+      const settings = await loadSettings();
+      if (!apiKey || keyRejected) return "unkeyed";
+      if (!needsScores(asked, settings)) return "unavailable";
+      const usedKey = apiKey;
       try {
-        const { scores, tokens } = await decide(apiKey, post, withImages);
+        const { scores, tokens } = await decide(usedKey, post, withImages);
         if (pausedUntil <= Date.now()) void setStatus({ kind: "ok" });
         recordUsage(tokens);
         return scores;
@@ -89,6 +94,7 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unavailable"> {
         if (!(error instanceof DecisionError)) throw error;
         switch (error.kind) {
           case "rate":
+            if (apiKey !== usedKey) continue;
             pausedUntil = Math.max(pausedUntil, Date.now() + error.retryAfterMs);
             void setStatus({ kind: "rate-limited", until: pausedUntil });
             continue;
@@ -107,9 +113,11 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unavailable"> {
           case "blocked":
             return "blocked";
           case "auth":
+            if (apiKey !== usedKey) continue;
             keyRejected = true;
+            wakePaused();
             void setStatus({ kind: "bad-key", message: error.message });
-            return "unavailable";
+            return "unkeyed";
           case "fatal":
             void setStatus({ kind: "error", message: error.message });
             return "unavailable";
@@ -120,6 +128,25 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unavailable"> {
   } finally {
     release();
   }
+}
+
+/** Waits out the rate-limit pause, waking early if the key changes or is rejected. */
+function waitPause() {
+  return new Promise<void>((resolve) => {
+    const ms = pausedUntil - Date.now();
+    if (ms <= 0) return resolve();
+    const wake = () => {
+      clearTimeout(timer);
+      paused.delete(wake);
+      resolve();
+    };
+    const timer = setTimeout(wake, ms);
+    paused.add(wake);
+  });
+}
+
+function wakePaused() {
+  for (const wake of paused) wake();
 }
 
 async function acquire() {

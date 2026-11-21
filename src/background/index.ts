@@ -9,8 +9,15 @@ import { classify, setApiKey, setNotSlop } from "./classifier.ts";
 void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 startBadge();
 
-const keyLoaded = store.apiKey.get().then((key) => setApiKey(key, false));
-store.apiKey.watch((key) => setApiKey(key, true));
+let keyWatched = false;
+const keyLoaded = store.apiKey.get().then((key) => {
+  if (!keyWatched) setApiKey(key, false);
+});
+store.apiKey.watch((key) => {
+  keyWatched = true;
+  setApiKey(key, true);
+  if (key) void tellTabs({ type: "retry" }, undefined);
+});
 void prune();
 
 /** Where the content scripts run, from the manifest. */

@@ -616,7 +616,6 @@ code {
 }
 
 .item {
-  position: relative;
   display: grid;
   grid-template-rows: 1fr;
   animation: row-in 420ms var(--glide) both;
@@ -1073,10 +1072,6 @@ code {
   background: none;
   cursor: pointer;
   transition: background 160ms;
-}
-
-.icon-button:hover {
-  background: var(--well);
 }
 
 .icon {

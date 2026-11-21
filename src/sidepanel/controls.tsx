@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useRef } from "preact/hooks";
 import { EYE_OFF } from "../core/glyphs.ts";
 
 export function Switch(props: {
@@ -66,12 +66,14 @@ export function Segments<T extends string>(props: {
 
 /** A number that pops when it changes, but not when it first appears. */
 function Count({ n }: { n: number }) {
-  const mounted = useRef(false);
-  useEffect(() => {
-    mounted.current = true;
-  }, []);
+  const prev = useRef(n);
+  const changed = useRef(false);
+  if (prev.current !== n) {
+    prev.current = n;
+    changed.current = true;
+  }
   return (
-    <span key={n} class={mounted.current ? "segment-count is-new" : "segment-count"}>
+    <span key={n} class={changed.current ? "segment-count is-new" : "segment-count"}>
       {n}
     </span>
   );

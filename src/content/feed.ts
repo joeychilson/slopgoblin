@@ -225,6 +225,9 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
         t.status = "idle";
         if (wantsRequest(t) && elementsOf(t).length) void request(t);
       }
+    } else if ("needsKey" in res) {
+      t.status = "idle";
+      changed();
     } else {
       t.status = "failed";
       setTimeout(() => {
@@ -343,6 +346,12 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     switch (message.type) {
       case "get-tab-state":
         sendResponse(tabState());
+        break;
+      case "retry":
+        for (const el of document.querySelectorAll(`[${ID_ATTR}]`)) {
+          const t = posts.get(el.getAttribute(ID_ATTR) ?? "");
+          if (t && wantsRequest(t)) void request(t);
+        }
         break;
       case "reveal": {
         const t = posts.get(message.id);

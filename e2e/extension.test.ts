@@ -68,6 +68,104 @@ async function underParent(x: Page, parent: MockPost, reply: MockPost) {
 
 const handleIn = (text: string) => text.match(/^Author: .* \(@(\w+)\)$/m)?.[1];
 
+describe("side panel tab state", { timeout: 30_000 }, () => {
+  it("clears stale X tab state as soon as the tab navigates away", async () => {
+    const m = await launch([]);
+    let finishNav!: () => void;
+    const holdNav = new Promise<void>((resolve) => (finishNav = resolve));
+    await m.ctx.route("https://example.com/", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: '<html><body>Elsewhere<script src="https://example.com/slow.js"></script></body></html>',
+      }),
+    );
+    await m.ctx.route("https://example.com/slow.js", async (route) => {
+      await holdNav;
+      await route.fulfill({ contentType: "application/javascript", body: "" });
+    });
+    try {
+      const tab = await m.ctx.newPage();
+      await tab.goto("https://x.com/home");
+      const panel = await m.ctx.newPage();
+      await panel.addInitScript(() => {
+        const query = chrome.tabs.query.bind(chrome.tabs);
+        chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>
+          info.active
+            ? (await query({})).filter((t) => !t.url?.startsWith("chrome-extension://")).slice(-1)
+            : query(info);
+      });
+      await panel.goto(`chrome-extension://${m.extension}/sidepanel/index.html`);
+      await poll(() => panel.innerText(".summary")).toMatch(/Nothing checked yet/);
+
+      // Start navigating away and hold the response so status stays "loading".
+      const nav = tab.goto("https://example.com/").catch(() => {});
+      await expect.poll(() => panel.innerText(".summary"), { timeout: 4_000 }).toMatch(/Not on X/);
+      finishNav();
+      await nav;
+    } finally {
+      finishNav();
+      await m.ctx.close();
+    }
+  });
+
+  it("does not flash Not on X while an X tab reloads", async () => {
+    const m = await launch([]);
+    let holdReload = false;
+    let finishReload!: () => void;
+    const reloadHeld = new Promise<void>((resolve) => (finishReload = resolve));
+    await m.ctx.route("https://x.com/home", async (route) => {
+      if (holdReload) {
+        await route.fulfill({
+          contentType: "text/html",
+          body: '<!doctype html><html><body><script src="https://x.com/slow.js"></script></body></html>',
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await m.ctx.route("https://x.com/slow.js", async (route) => {
+      await reloadHeld;
+      await route.fulfill({ contentType: "application/javascript", body: "" });
+    });
+    try {
+      const tab = await m.ctx.newPage();
+      await tab.goto("https://x.com/home");
+      const panel = await openPanel(m.ctx, m.extension);
+      await poll(() => panel.innerText(".summary")).toMatch(/Nothing checked yet/);
+
+      await panel.evaluate(() => {
+        const seen: string[] = [];
+        const record = () => {
+          const text = document.querySelector(".summary h2")?.textContent ?? "";
+          if (text && seen.at(-1) !== text) seen.push(text);
+        };
+        record();
+        new MutationObserver(record).observe(document.body, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+        (window as unknown as { __headings: string[] }).__headings = seen;
+      });
+
+      holdReload = true;
+      const reloading = tab.reload();
+      await sleep(500);
+      finishReload();
+      await reloading;
+      await sleep(300);
+
+      const seen = await panel.evaluate(
+        () => (window as unknown as { __headings: string[] }).__headings,
+      );
+      expect(seen).toEqual(["Nothing checked yet"]);
+    } finally {
+      finishReload();
+      await m.ctx.close();
+    }
+  });
+});
+
 describe("on X", { timeout: 30_000 }, () => {
   let m: Awaited<ReturnType<typeof launch>>;
   let x: Page;
@@ -291,6 +389,74 @@ describe("on X", { timeout: 30_000 }, () => {
     expect(await panel.locator(".notice").innerText()).toMatch(/resumes in (19|20)s/);
   });
 
+  it("gives ad rows a valid aria-controls id without spaces", async () => {
+    const controls = await panel
+      .locator('.item:has-text("Big Brand") .item-open')
+      .getAttribute("aria-controls");
+    expect(controls).toMatch(/^\S+$/);
+    expect(await panel.evaluate((id) => Boolean(document.getElementById(id!)), controls)).toBe(
+      true,
+    );
+  });
+
+  it("does not pop unchanged strictness counts on unrelated re-renders", async () => {
+    const fresh = await openPanel(m.ctx, m.extension);
+    try {
+      await poll(() => fresh.locator(".segment-count").count()).toBe(3);
+      expect(await fresh.locator(".segment-count.is-new").count()).toBe(0);
+      await fresh.click('label.segment:has-text("Strict")');
+      await poll(() => settings(m.sw)).toMatchObject({ strictness: "strict" });
+      expect(await fresh.locator(".segment-count.is-new").count()).toBe(0);
+    } finally {
+      await settings(m.sw, { strictness: "balanced" });
+      await fresh.close();
+    }
+  });
+
+  it("stops the rate-limit countdown timer once it expires", async () => {
+    const fresh = await m.ctx.newPage();
+    await fresh.addInitScript(() => {
+      const active = new Set<number>();
+      const origSet = window.setInterval;
+      const origClear = window.clearInterval;
+      window.setInterval = ((...args: Parameters<typeof setInterval>) => {
+        const id = origSet(...args);
+        active.add(id);
+        return id;
+      }) as typeof setInterval;
+      window.clearInterval = ((id?: number) => {
+        if (id !== undefined) active.delete(id);
+        return origClear(id);
+      }) as typeof clearInterval;
+      (window as unknown as { __intervals: () => number }).__intervals = () => active.size;
+      const query = chrome.tabs.query.bind(chrome.tabs);
+      chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>
+        info.active ? (await query({ url: "https://x.com/*" })).slice(0, 1) : query(info);
+    });
+    try {
+      await m.sw.evaluate(() =>
+        chrome.storage.session.set({
+          status: { kind: "rate-limited", until: Date.now() + 1200 },
+        }),
+      );
+      await fresh.goto(`chrome-extension://${m.extension}/sidepanel/index.html`);
+      await poll(() => fresh.locator(".notice").count()).toBe(1);
+      await poll(() => fresh.locator(".notice").count()).toBe(0);
+      await expect
+        .poll(
+          () =>
+            fresh.evaluate(() =>
+              (window as unknown as { __intervals: () => number }).__intervals(),
+            ),
+          { timeout: 2_000 },
+        )
+        .toBe(0);
+    } finally {
+      await m.sw.evaluate(() => chrome.storage.session.set({ status: { kind: "ok" } }));
+      await fresh.close();
+    }
+  });
+
   it("throws no errors", () => expect(m.errors).toEqual([]));
 });
 
@@ -398,6 +564,69 @@ describe("with a key Google rejects", { timeout: 60_000 }, () => {
       await (await m.ctx.newPage()).goto("https://x.com/home");
       const panel = await openPanel(m.ctx, m.extension);
       await poll(() => panel.innerText(".sheet")).toMatch(/Google rejected your API key/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+});
+
+describe("when rate-limited or missing a key", { timeout: 60_000 }, () => {
+  const four: MockPost[] = [1, 2, 3, 4].map((n) => ({
+    id: `50${n}`,
+    handle: `rager${n}`,
+    name: `Rager ${n}`,
+    text: `Junk ${n} [ragebait .9]`,
+  }));
+
+  it("wakes paused requests when the API key is replaced", async () => {
+    const m = await launch(four, (route) => {
+      if (route.request().headers()["x-goog-api-key"] === "test-key") {
+        return route.fulfill({
+          status: 429,
+          headers: { "retry-after": "60" },
+          json: { error: { message: "Rate limit exceeded" } },
+        });
+      }
+      return route.fulfill({
+        json: { answers: { kind: { probabilities: { ragebait: 0.9, fine: 0.1 } } } },
+      });
+    });
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(4);
+      await m.sw.evaluate(() => chrome.storage.local.set({ apiKey: "fresh-key" }));
+      for (const { handle } of four) {
+        await expect
+          .poll(() => state(page, handle), { timeout: 4_000 })
+          .toMatchObject({
+            sg: "collapsed",
+          });
+      }
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("resumes immediately when an API key is saved after opening X without one", async () => {
+    const m = await launch(four.slice(0, 2));
+    try {
+      await m.sw.evaluate(() => chrome.storage.local.remove("apiKey"));
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await sleep(1500);
+      expect(m.sent).toEqual([]);
+      await m.sw.evaluate(() => chrome.storage.local.set({ apiKey: "good-key" }));
+      await expect
+        .poll(() => state(page, "rager1"), { timeout: 4_000 })
+        .toMatchObject({
+          sg: "collapsed",
+        });
+      await expect
+        .poll(() => state(page, "rager2"), { timeout: 4_000 })
+        .toMatchObject({
+          sg: "collapsed",
+        });
     } finally {
       await m.ctx.close();
     }

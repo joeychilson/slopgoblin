@@ -89,28 +89,51 @@ export interface ActiveTab {
   url?: string;
   /** Null when Slop Goblin isn't running in the tab. */
   state: TabState | null;
+  /** True while the tab is mid-navigation, before its content script has had a chance to run. */
+  loading?: boolean;
 }
 
-/** The feed state of whichever tab is active in this window, kept live. */
+/** The feed state of whichever tab is active in this window, kept live. Undefined while loading, null when none. */
 export function useActiveTab() {
-  const [tab, setTab] = useState<ActiveTab>();
+  const [tab, setTab] = useState<ActiveTab | null>();
   useEffect(() => {
     let activeId: number | undefined;
+    let seq = 0;
 
     const refresh = async () => {
+      const call = ++seq;
       const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (call !== seq) return;
       activeId = active?.id;
-      if (activeId === undefined) return setTab(undefined);
-      const id = activeId;
-      const state = await sendToTab<TabState>(id, { type: "get-tab-state" });
-      if (id === activeId) setTab({ id, url: active?.url, state: state ?? null });
+      if (activeId === undefined) return setTab(null);
+      const state = await sendToTab<TabState>(activeId, { type: "get-tab-state" });
+      if (call === seq) {
+        setTab({
+          id: activeId,
+          url: active?.url,
+          state: state ?? null,
+          loading: active?.status === "loading",
+        });
+      }
     };
     const onMessage = (message: RuntimeMessage, sender: chrome.runtime.MessageSender) => {
       if (message.type !== "tab-state" || sender.tab?.id !== activeId) return;
-      setTab((tab) => tab && { ...tab, state: message.state });
+      setTab((tab) =>
+        tab && tab.id === activeId ? { ...tab, state: message.state, loading: false } : tab,
+      );
     };
-    const onUpdated = (tabId: number, info: chrome.tabs.OnUpdatedInfo) => {
-      if (tabId === activeId && info.status === "complete") void refresh();
+    const onUpdated = (
+      tabId: number,
+      info: chrome.tabs.OnUpdatedInfo,
+      updated: chrome.tabs.Tab,
+    ) => {
+      if (tabId !== activeId) return;
+      if (info.status === "loading") {
+        seq++;
+        setTab({ id: tabId, url: updated.url, state: null, loading: true });
+      } else if (info.status === "complete") {
+        void refresh();
+      }
     };
 
     void refresh();
@@ -131,14 +154,16 @@ export function sendToTab<T>(tabId: number, message: TabMessage): Promise<T | un
   return chrome.tabs.sendMessage<TabMessage, T>(tabId, message).catch(() => undefined);
 }
 
-/** The time, with a re-render every second while `active`, for countdowns. */
-export function useTicker(active: boolean) {
+/** The time, with a re-render every second until `until`, for countdowns. */
+export function useTicker(until: number) {
   const [, setTicks] = useState(0);
+  const now = Date.now();
+  const active = until > now;
   useEffect(() => {
     if (!active) return;
     const timer = setInterval(() => setTicks((n) => n + 1), 1000);
     return () => clearInterval(timer);
   }, [active]);
   // Read on each render, so a countdown that starts while the panel is open starts right.
-  return Date.now();
+  return now;
 }

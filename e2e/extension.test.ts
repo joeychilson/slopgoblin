@@ -68,6 +68,47 @@ async function underParent(x: Page, parent: MockPost, reply: MockPost) {
 
 const handleIn = (text: string) => text.match(/^Author: .* \(@(\w+)\)$/m)?.[1];
 
+describe("side panel tab state", { timeout: 30_000 }, () => {
+  it("clears stale X tab state as soon as the tab navigates away", async () => {
+    const m = await launch([]);
+    let finishNav!: () => void;
+    const holdNav = new Promise<void>((resolve) => (finishNav = resolve));
+    await m.ctx.route("https://example.com/", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: '<html><body>Elsewhere<script src="https://example.com/slow.js"></script></body></html>',
+      }),
+    );
+    await m.ctx.route("https://example.com/slow.js", async (route) => {
+      await holdNav;
+      await route.fulfill({ contentType: "application/javascript", body: "" });
+    });
+    try {
+      const tab = await m.ctx.newPage();
+      await tab.goto("https://x.com/home");
+      const panel = await m.ctx.newPage();
+      await panel.addInitScript(() => {
+        const query = chrome.tabs.query.bind(chrome.tabs);
+        chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>
+          info.active
+            ? (await query({})).filter((t) => !t.url?.startsWith("chrome-extension://")).slice(-1)
+            : query(info);
+      });
+      await panel.goto(`chrome-extension://${m.extension}/sidepanel/index.html`);
+      await poll(() => panel.innerText(".summary")).toMatch(/Nothing checked yet/);
+
+      // Start navigating away and hold the response so status stays "loading".
+      const nav = tab.goto("https://example.com/").catch(() => {});
+      await expect.poll(() => panel.innerText(".summary"), { timeout: 4_000 }).toMatch(/Not on X/);
+      finishNav();
+      await nav;
+    } finally {
+      finishNav();
+      await m.ctx.close();
+    }
+  });
+});
+
 describe("on X", { timeout: 30_000 }, () => {
   let m: Awaited<ReturnType<typeof launch>>;
   let x: Page;
@@ -289,6 +330,74 @@ describe("on X", { timeout: 30_000 }, () => {
     );
     // The first number it shows, not one it counts down to later.
     expect(await panel.locator(".notice").innerText()).toMatch(/resumes in (19|20)s/);
+  });
+
+  it("gives ad rows a valid aria-controls id without spaces", async () => {
+    const controls = await panel
+      .locator('.item:has-text("Big Brand") .item-open')
+      .getAttribute("aria-controls");
+    expect(controls).toMatch(/^\S+$/);
+    expect(await panel.evaluate((id) => Boolean(document.getElementById(id!)), controls)).toBe(
+      true,
+    );
+  });
+
+  it("does not pop unchanged strictness counts on unrelated re-renders", async () => {
+    const fresh = await openPanel(m.ctx, m.extension);
+    try {
+      await poll(() => fresh.locator(".segment-count").count()).toBe(3);
+      expect(await fresh.locator(".segment-count.is-new").count()).toBe(0);
+      await fresh.click('label.segment:has-text("Strict")');
+      await poll(() => settings(m.sw)).toMatchObject({ strictness: "strict" });
+      expect(await fresh.locator(".segment-count.is-new").count()).toBe(0);
+    } finally {
+      await settings(m.sw, { strictness: "balanced" });
+      await fresh.close();
+    }
+  });
+
+  it("stops the rate-limit countdown timer once it expires", async () => {
+    const fresh = await m.ctx.newPage();
+    await fresh.addInitScript(() => {
+      const active = new Set<number>();
+      const origSet = window.setInterval;
+      const origClear = window.clearInterval;
+      window.setInterval = ((...args: Parameters<typeof setInterval>) => {
+        const id = origSet(...args);
+        active.add(id);
+        return id;
+      }) as typeof setInterval;
+      window.clearInterval = ((id?: number) => {
+        if (id !== undefined) active.delete(id);
+        return origClear(id);
+      }) as typeof clearInterval;
+      (window as unknown as { __intervals: () => number }).__intervals = () => active.size;
+      const query = chrome.tabs.query.bind(chrome.tabs);
+      chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>
+        info.active ? (await query({ url: "https://x.com/*" })).slice(0, 1) : query(info);
+    });
+    try {
+      await m.sw.evaluate(() =>
+        chrome.storage.session.set({
+          status: { kind: "rate-limited", until: Date.now() + 1200 },
+        }),
+      );
+      await fresh.goto(`chrome-extension://${m.extension}/sidepanel/index.html`);
+      await poll(() => fresh.locator(".notice").count()).toBe(1);
+      await poll(() => fresh.locator(".notice").count()).toBe(0);
+      await expect
+        .poll(
+          () =>
+            fresh.evaluate(() =>
+              (window as unknown as { __intervals: () => number }).__intervals(),
+            ),
+          { timeout: 2_000 },
+        )
+        .toBe(0);
+    } finally {
+      await m.sw.evaluate(() => chrome.storage.session.set({ status: { kind: "ok" } }));
+      await fresh.close();
+    }
   });
 
   it("throws no errors", () => expect(m.errors).toEqual([]));

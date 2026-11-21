@@ -24,7 +24,8 @@ export function Summary(props: { tab?: ActiveTab; settings: Settings; checked: C
   }
   const counts = checked.length ? hiddenAtEach(checked, settings) : undefined;
   // Tabs opened before the extension was installed don't have the content script yet.
-  const reloadId = tab?.url?.startsWith("https://x.com/") && !tab.state ? tab.id : undefined;
+  const reloadId =
+    tab?.url?.startsWith("https://x.com/") && !tab.state && !tab.loading ? tab.id : undefined;
   return (
     <section class="summary" aria-label="Summary">
       {reloadId !== undefined ? (

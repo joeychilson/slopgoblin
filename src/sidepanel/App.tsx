@@ -88,11 +88,12 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
         {view === "settings" ? (
           <Settings settings={settings} apiKey={apiKey} hidden={hidden} />
         ) : (
-          // Nothing until the list has loaded, so it doesn't flash "Nothing checked yet".
-          checked && (
+          // Nothing until the list and active tab have loaded, so empty states don't flash.
+          checked &&
+          tab !== undefined && (
             <>
               <Notice status={status} broken={tab?.state?.broken} enabled={settings.enabled} />
-              <Summary tab={tab} settings={settings} checked={checked} />
+              <Summary tab={tab ?? undefined} settings={settings} checked={checked} />
               {hidden.length > 0 && (
                 <HiddenList
                   hidden={hidden}
@@ -117,7 +118,7 @@ interface NoticeContent {
 
 function Notice(props: { status: ServiceStatus; broken?: boolean; enabled: boolean }) {
   const { status, broken = false, enabled } = props;
-  const now = useTicker(status.kind === "rate-limited");
+  const now = useTicker(enabled && status.kind === "rate-limited" ? status.until : 0);
   const notice = noticeFor(status, broken, enabled, now);
   if (!notice) return null;
   return (

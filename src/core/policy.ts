@@ -86,10 +86,10 @@ export function needsScores(
 
 /**
  * What's decided before the model's answer, in this order. Nothing is hidden while filtering is
- * off, or from an author the reader trusts. The site's ad label hides a post, even from someone
- * the reader follows: following an account doesn't make its ads welcome. Nothing else from them
- * is hidden. Then the site's other labels hide. An ad shown because ads are off isn't asked
- * about. Undefined when it's up to the model.
+ * off, once the reader let a post through, or from an author the reader trusts. The site's ad
+ * label hides a post, even from someone the reader follows: following an account doesn't make
+ * its ads welcome. Nothing else from them is hidden. Then the site's other labels hide. An ad
+ * shown because ads are off isn't asked about. Undefined when it's up to the model.
  */
 function settled(post: Omit<Judged, "scores">, settings: Settings): Verdict | "shown" | undefined {
   if (!settings.enabled || post.notSlop || settings.trusted.includes(post.handle.toLowerCase())) {

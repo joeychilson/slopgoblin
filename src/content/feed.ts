@@ -88,7 +88,6 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
         t.post = post;
         if (t.status === "done") t.status = "idle";
       }
-      if (t.verdict?.labeled && t.checkedAt === undefined) listed(t);
       if (wantsRequest(t)) void request(t);
       show(t, el, true);
     }
@@ -147,7 +146,6 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     for (const el of document.querySelectorAll(`[${ID_ATTR}]`)) {
       const t = posts.get(el.getAttribute(ID_ATTR) ?? "");
       if (!t) continue;
-      if (t.verdict?.labeled && t.checkedAt === undefined) listed(t);
       if (wantsRequest(t)) void request(t);
       show(t, el, true);
     }
@@ -162,9 +160,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     for (const t of posts.values()) {
       if (!handles.has(handleOf(t)) && !ids.has(t.post.id)) continue;
       update(t, false);
-      const mounted = elementsOf(t).length > 0;
-      if (t.verdict?.labeled && t.checkedAt === undefined && mounted) t.checkedAt = Date.now();
-      if (wantsRequest(t) && mounted) void request(t);
+      if (wantsRequest(t) && elementsOf(t).length) void request(t);
       touched(t);
     }
   }
@@ -261,6 +257,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   function show(t: Tracked, el: Element, fresh: boolean) {
     const cell = site.container(el);
     if (!cell || stopped) return;
+    if (t.verdict?.labeled && t.checkedAt === undefined) listed(t);
     const view = viewFor(t);
     // Folding or unfolding a post the reader has scrolled past would move the page under them.
     // It changes the next time the site renders it instead; only its bar's words change now.

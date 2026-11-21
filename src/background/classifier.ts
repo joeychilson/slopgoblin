@@ -74,13 +74,12 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unkeyed" | "unavai
   const queued = Date.now();
   await acquire();
   try {
+    if (Date.now() - queued > STALE_MS) return "unavailable";
     const asked = { labels: post.labels, handle: post.author.handle, isReply: isReply(post) };
     let withImages = true;
     let failures = 0;
     for (let attempt = 0; attempt < 6; attempt++) {
       while (pausedUntil > Date.now() && apiKey && !keyRejected) await waitPause();
-      // Checked after any pause too, so stale scrolled-past posts yield to newer ones.
-      if (Date.now() - queued > STALE_MS) return "unavailable";
       // Filtering may have been switched off, or the author marked "Always show", meanwhile.
       const settings = await loadSettings();
       if (!apiKey || keyRejected) return "unkeyed";

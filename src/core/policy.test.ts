@@ -119,4 +119,8 @@ describe("needsScores", () => {
     expect(needsScores(asked({ followed: true }), settings())).toBe(false);
     expect(needsScores(asked(), settings({ categories: only("reply_spam") }))).toBe(false);
   });
+
+  it("skips a post the reader already let through", () => {
+    expect(needsScores(asked({ notSlop: true }), settings())).toBe(false);
+  });
 });

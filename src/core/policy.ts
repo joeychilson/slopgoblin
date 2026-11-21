@@ -44,7 +44,6 @@ export interface Judged {
  * from cached scores without asking the model again.
  */
 export function judge(post: Judged, settings: Settings): Verdict | null {
-  if (post.notSlop) return null;
   const known = settled(post, settings);
   if (known) return known === "shown" ? null : known;
 
@@ -87,13 +86,15 @@ export function needsScores(
 
 /**
  * What's decided before the model's answer, in this order. Nothing is hidden while filtering is
- * off, or from an author the reader trusts. The site's ad label hides a post, even from someone
- * the reader follows: following an account doesn't make its ads welcome. Nothing else from them
- * is hidden. Then the site's other labels hide. An ad shown because ads are off isn't asked
- * about. Undefined when it's up to the model.
+ * off, once the reader let a post through, or from an author the reader trusts. The site's ad
+ * label hides a post, even from someone the reader follows: following an account doesn't make
+ * its ads welcome. Nothing else from them is hidden. Then the site's other labels hide. An ad
+ * shown because ads are off isn't asked about. Undefined when it's up to the model.
  */
 function settled(post: Omit<Judged, "scores">, settings: Settings): Verdict | "shown" | undefined {
-  if (!settings.enabled || settings.trusted.includes(post.handle.toLowerCase())) return "shown";
+  if (!settings.enabled || post.notSlop || settings.trusted.includes(post.handle.toLowerCase())) {
+    return "shown";
+  }
   const ad = post.labels.includes("ad");
   if (ad && settings.categories.ad) return labeled("ad");
   if (settings.trustFollowing && post.followed === true) return "shown";

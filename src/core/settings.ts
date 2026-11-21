@@ -33,9 +33,16 @@ const saved = stored<Partial<Settings>>("sync", "settings");
 
 export const loadSettings = async () => withDefaults(await saved.get());
 
-export async function updateSettings(patch: (s: Settings) => Partial<Settings>) {
-  const current = await loadSettings();
-  await saved.set({ ...current, ...patch(current) });
+let pending: Promise<void> = Promise.resolve();
+
+export function updateSettings(patch: (s: Settings) => Partial<Settings>) {
+  const run = async () => {
+    const current = await loadSettings();
+    await saved.set({ ...current, ...patch(current) });
+  };
+  const next = pending.then(run, run);
+  pending = next.catch(() => {});
+  return next;
 }
 
 export const watchSettings = (onChange: (s: Settings) => void) =>

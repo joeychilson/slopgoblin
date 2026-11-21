@@ -13,13 +13,7 @@ export const USD_PER_MILLION_TOKENS = 0.1;
 /** The probability a post belongs to each category. What's left over is the chance it's fine. */
 export type Scores = Partial<Record<CategoryId, number>>;
 
-const OPTIONS = ASKED.map((c) => ({
-  id: c.id,
-  describes: c.describes,
-  repliesOnly: "repliesOnly" in c,
-}));
-
-const optionsFor = (isReply: boolean) => OPTIONS.filter((o) => isReply || !o.repliesOnly);
+const optionsFor = (isReply: boolean) => ASKED.filter((c) => isReply || !("repliesOnly" in c));
 
 /**
  * The question a post or a reply is asked, in the API's own form. One question only: questions

@@ -115,8 +115,8 @@ export function Lurker(props: {
     };
   }, [open]);
 
-  const lurkerClass = ["lurker", !awake && "is-asleep", shy && "is-shy"].filter(Boolean).join(" ");
-  const handsClass = ["lurker-hands", shy && "is-shy"].filter(Boolean).join(" ");
+  const lurkerClass = awake ? "lurker" : "lurker is-asleep";
+  const handsClass = shy ? "lurker-hands is-shy" : "lurker-hands";
 
   return (
     <>

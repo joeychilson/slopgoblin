@@ -294,6 +294,96 @@ describe("on X", { timeout: 30_000 }, () => {
   it("throws no errors", () => expect(m.errors).toEqual([]));
 });
 
+describe("feed and checked-list sync", { timeout: 60_000 }, () => {
+  it("does not record labeled posts while filtering is off, and hides them once re-enabled", async () => {
+    const ad: MockPost = { id: "601", handle: "brand", name: "Brand", text: "Buy now", ad: true };
+    const m = await launch([ad]);
+    try {
+      await settings(m.sw, { enabled: false });
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await shows(page, "brand", "shown");
+      await sleep(500);
+      const whileOff = await m.sw.evaluate(() => chrome.storage.session.get(null));
+      expect(Object.keys(whileOff).filter((k) => k.startsWith("checked:"))).toEqual([]);
+
+      await settings(m.sw, { enabled: true });
+      await shows(page, "brand", "collapsed", /^Ad from Brand/);
+      await poll(() =>
+        m.sw.evaluate(async () =>
+          Object.keys(await chrome.storage.session.get(null)).filter((k) =>
+            k.startsWith("checked:"),
+          ),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("re-checks a post when its parent arrives while a request is in flight", async () => {
+    const reply: MockPost = {
+      id: "602",
+      handle: "replier",
+      name: "Reply Guy",
+      text: "So true!! [reply_spam .9]",
+    };
+    let firstReply!: () => void;
+    const holdFirst = new Promise<void>((resolve) => (firstReply = resolve));
+    let held = false;
+    const m = await launch([reply], async (route) => {
+      const text: string = route.request().postDataJSON().input[0].text;
+      if (!held && handleIn(text) === "replier") {
+        held = true;
+        await holdFirst;
+      }
+      const isRep = text.includes("Replying to @");
+      const probabilities = isRep ? { reply_spam: 0.9, fine: 0.1 } : { fine: 1 };
+      await route.fulfill({ json: { answers: { kind: { probabilities } } } });
+    });
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(1);
+      // Parent turns up while the first classification is still in flight.
+      await underParent(
+        page,
+        { id: "603", handle: "newsdesk", name: "News", text: "Big news." },
+        reply,
+      );
+      firstReply();
+      await shows(page, "replier", "collapsed", /^Reply spam from Reply Guy/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("does not resurrect the trust confirmation after untrusting from settings", async () => {
+    const slopper: MockPost = {
+      id: "604",
+      handle: "slopper",
+      name: "Growth Guru",
+      text: "It's not X. It's Y. [ai_slop .8]",
+    };
+    const m = await launch([slopper]);
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await shows(page, "slopper", "collapsed");
+      await click(page, "slopper", ".sg-row");
+      await click(page, "slopper", "[data-sg-action=trust]");
+      await shows(page, "slopper", "confirmed", /Growth Guru will always show/);
+      // Untrust via Settings (not Undo), then trust again from elsewhere.
+      await settings(m.sw, { trusted: [] });
+      await shows(page, "slopper", "revealed");
+      await settings(m.sw, { trusted: ["slopper"] });
+      await shows(page, "slopper", "shown", /^$/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+});
+
 describe("with a key Google rejects", { timeout: 60_000 }, () => {
   it("says so in the side panel", async () => {
     const rejected = {

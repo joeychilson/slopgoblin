@@ -84,10 +84,11 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       // The post it replies to, or a note, can turn up after the post was first read without it.
       // That can make it worth asking about (a reply, when only replies are filtered), or worth
       // asking again.
-      if (t.status !== "pending" && addsContext(post, t.post)) {
+      if (addsContext(post, t.post)) {
         t.post = post;
         if (t.status === "done") t.status = "idle";
       }
+      if (t.verdict?.labeled && t.checkedAt === undefined) listed(t);
       if (wantsRequest(t)) void request(t);
       show(t, el, true);
     }
@@ -118,29 +119,35 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       if (!elementsOf(old).length) posts.delete(id);
     }
     posts.set(post.id, t);
-    if (labelsOf(t).length) listed(t);
+    rejudge(t);
     return t;
   }
 
   /** The post has its answer. */
   function checked(t: Tracked) {
     t.status = "done";
+    rejudge(t);
     listed(t);
   }
 
-  /** Puts the post in the side panel's list, judged on what's known so far. */
+  /** Puts the post in the side panel's list. */
   function listed(t: Tracked) {
     t.checkedAt ??= Date.now();
-    rejudge(t);
     touched(t);
   }
 
   function onSettings(next: Settings) {
     settings = next;
-    for (const t of posts.values()) rejudge(t);
+    for (const t of posts.values()) {
+      if (t.letThrough === "trust" && !settings.trusted.includes(handleOf(t))) {
+        t.letThrough = undefined;
+      }
+      rejudge(t);
+    }
     for (const el of document.querySelectorAll(`[${ID_ATTR}]`)) {
       const t = posts.get(el.getAttribute(ID_ATTR) ?? "");
       if (!t) continue;
+      if (t.verdict?.labeled && t.checkedAt === undefined) listed(t);
       if (wantsRequest(t)) void request(t);
       show(t, el, true);
     }
@@ -154,9 +161,10 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     const ids = new Set(data.labels.map(([id]) => id));
     for (const t of posts.values()) {
       if (!handles.has(handleOf(t)) && !ids.has(t.post.id)) continue;
-      if (labelsOf(t).length) t.checkedAt ??= Date.now();
       update(t, false);
-      if (wantsRequest(t) && elementsOf(t).length) void request(t);
+      const mounted = elementsOf(t).length > 0;
+      if (t.verdict?.labeled && t.checkedAt === undefined && mounted) t.checkedAt = Date.now();
+      if (wantsRequest(t) && mounted) void request(t);
       touched(t);
     }
   }
@@ -193,6 +201,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
     changed();
     // Cached scores come back straight away. A post that still needs judging gets a moment to
     // finish rendering first, then is read again.
+    let asked = t.post;
     let res = await classify(t, true);
     if ("uncached" in res) {
       await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
@@ -204,7 +213,9 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
         changed();
         return;
       }
-      t.post = site.readPost(el) ?? t.post;
+      const reread = site.readPost(el);
+      if (reread && !addsContext(t.post, reread)) t.post = reread;
+      asked = t.post;
       res = await classify(t, false);
     }
 
@@ -213,6 +224,11 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       t.notSlop ||= res.notSlop;
       checked(t);
       for (const el of elementsOf(t)) show(t, el, false);
+      // More context arrived while this answer was in flight; ask again with it.
+      if (addsContext(t.post, asked)) {
+        t.status = "idle";
+        if (wantsRequest(t) && elementsOf(t).length) void request(t);
+      }
     } else {
       t.status = "failed";
       setTimeout(() => {
@@ -266,12 +282,7 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
       if (settings.peek || t.revealed) return { ...base, mode: "revealed" };
       return settings.hideMode === "remove" ? { mode: "removed" } : { ...base, mode: "collapsed" };
     }
-    // The confirmation lasts as long as what it confirms.
-    const holds =
-      letThrough === "trust"
-        ? settings.trusted.includes(handleOf(t))
-        : letThrough === "not-slop" && t.notSlop;
-    return settings.enabled && letThrough && holds
+    return settings.enabled && letThrough
       ? { mode: "confirmed", id: post.id, author: post.author, action: letThrough }
       : { mode: "shown" };
   }
@@ -321,7 +332,6 @@ export function startFeed(site: SiteAdapter, initialSettings: Settings) {
   function setNotSlop(t: Tracked, notSlop: boolean, fresh: boolean) {
     t.notSlop = notSlop;
     update(t, fresh);
-    touched(t);
   }
 
   function handleOf(t: Tracked) {

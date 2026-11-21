@@ -36,7 +36,19 @@ export async function recordChecked(posts: CheckedPost[]) {
   const all = await load();
   const items: Record<string, CheckedPost> = {};
   for (const post of posts) {
-    const entry = { ...post, at: Math.min(post.at, all.get(post.id)?.at ?? post.at) };
+    const prev = all.get(post.id);
+    const entry: CheckedPost = prev
+      ? {
+          ...post,
+          avatar: post.avatar ?? prev.avatar,
+          followed: post.followed ?? prev.followed,
+          labels: [...new Set([...prev.labels, ...post.labels])],
+          scores: Object.keys(post.scores).length ? post.scores : prev.scores,
+          // Once a post has scores in this session, `updateChecked` owns its `notSlop` state.
+          notSlop: Object.keys(prev.scores).length ? prev.notSlop : post.notSlop,
+          at: Math.min(post.at, prev.at),
+        }
+      : post;
     all.set(post.id, entry);
     items[keyOf(post.id)] = entry;
   }

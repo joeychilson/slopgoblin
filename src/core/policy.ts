@@ -44,7 +44,6 @@ export interface Judged {
  * from cached scores without asking the model again.
  */
 export function judge(post: Judged, settings: Settings): Verdict | null {
-  if (post.notSlop) return null;
   const known = settled(post, settings);
   if (known) return known === "shown" ? null : known;
 
@@ -93,7 +92,9 @@ export function needsScores(
  * about. Undefined when it's up to the model.
  */
 function settled(post: Omit<Judged, "scores">, settings: Settings): Verdict | "shown" | undefined {
-  if (!settings.enabled || settings.trusted.includes(post.handle.toLowerCase())) return "shown";
+  if (!settings.enabled || post.notSlop || settings.trusted.includes(post.handle.toLowerCase())) {
+    return "shown";
+  }
   const ad = post.labels.includes("ad");
   if (ad && settings.categories.ad) return labeled("ad");
   if (settings.trustFollowing && post.followed === true) return "shown";

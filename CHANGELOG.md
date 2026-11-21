@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1
+
+- **Replacing an API key takes effect right away.** Swapping keys during a rate limit no longer
+  waits out the old key's pause, and tabs opened without a working key stop retrying in the
+  background and check posts as soon as a key is saved.
+- **Let-through posts and filtering switches stay consistent.** Posts you let through aren't sent
+  to Google again if new context turns up, labeled posts aren't recorded while filtering is off,
+  and letting a post through in one tab won't be undone by another.
+- **Replies checked while loading** are checked again if the post they answer shows up mid-flight.
+- **Side panel fixes:** the rate-limit timer stops once the countdown ends, strictness counts
+  only animate when their numbers change, leaving X clears stale tab state without flashing
+  "Not on X" on reloads, and rapid settings toggles don't overwrite each other.
+
 ## 0.2.0
 
 - **News stays.** News the model hadn't heard of read to it as made up, so it was hidden as AI

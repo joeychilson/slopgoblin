@@ -8,6 +8,7 @@ export type Priority = 0 | 1;
 /** Sent to the service worker, except `tab-state` which is observed by the side panel. */
 export type RuntimeMessage =
   | { type: "classify"; post: Post; cachedOnly: boolean; priority?: Priority }
+  | { type: "prioritize"; ids: string[] }
   | { type: "checked"; posts: CheckedPost[] }
   | { type: "not-slop"; id: string; notSlop: boolean }
   | { type: "tab-state"; state: TabState };

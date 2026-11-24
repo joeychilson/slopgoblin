@@ -48,10 +48,9 @@ export function questionKey(post: PostContent) {
   return notes.length ? `${key}.${hash(notes.join("|"))}` : key;
 }
 
-/** Whether `next` carries new context (`replyTo`, images, text, notes) worth re-judging on. */
+/** Whether `next` carries new context (`replyTo`, images, notes) worth re-judging on. */
 export function addsContext(next: PostContent, prev: PostContent) {
   if (imageCount(next) > imageCount(prev)) return true;
-  if (next.text && !prev.text) return true;
   const context = (post: PostContent) => [
     post.replyTo,
     post.readerNote,

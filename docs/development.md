@@ -52,8 +52,8 @@ content script (x.com)            service worker                    Gemini
   yet. A post that passes along something its note calls fake or bait is judged as junk of the
   same kind, unless it corrects it. A note that only adds context changes nothing. A note that
   turns up later changes the cache key, so the post is asked about again.
-- **About 10¢ per 1,000 posts.** A text post is about 770 input tokens and each image adds 280
-  (up to two are sent, at low resolution), which averages 970 on a real feed. Output is free.
+- **About 10¢ per 1,000 posts.** A text post is about 825 input tokens and each image adds 280
+  (up to two are sent, at low resolution), which averages 1,030 on a real feed. Output is free.
   The free tier's 50,000 tokens a minute covers about 50 posts a minute; when it runs out, the
   posts on screen are checked first once it's back.
 - **Google is only asked about posts that could be hidden.** Not your own posts, not posts
@@ -177,6 +177,11 @@ Things learned the hard way, before changing the wording:
 - Adding up only the kinds switched on, as 0.1.1 did, let most junk through for a reader who
   kept one kind: 229 of 481 caught, against 274 by share, for 4 posts hidden that the reader
   wanted to see instead of 8. With every kind on, the two rules hide exactly the same posts.
+- Also hiding a post when its likeliest kind is switched on, even if the other kinds together
+  outweigh it, only changes things for a reader with one kind on (with every kind on, or one
+  switched off, both rules hide the same posts). Across the current sets, that catches 382 of
+  634 junk posts instead of 351, for 26 posts hidden that the reader wanted to see instead of 19
+  (clickbait alone: 8 instead of 4).
 - Telling the model which image is a video's first frame hid 6 more real video posts at
   Balanced, and caught no more junk.
 - The rule for a post quoting a noted post works in the input, right after the note. Moved

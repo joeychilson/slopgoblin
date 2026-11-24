@@ -403,9 +403,12 @@ describe("on X", { timeout: 30_000 }, () => {
     await poll(() => m.sent.map(handleIn)).toContain("lazyimg");
     const before = m.sent.length;
     await x.locator(cellOf("lazyimg")).evaluate((el) => {
+      const slot = document.createElement("div");
+      slot.dataset.testid = "tweetPhoto";
       const img = document.createElement("img");
       img.src = "https://pbs.twimg.com/media/lazy.jpg?format=jpg&name=small";
-      el.querySelector('[data-testid="tweetText"]')!.after(img);
+      slot.append(img);
+      el.querySelector('[data-testid="tweetText"]')!.after(slot);
     });
     await poll(() => m.sent.length).toBeGreaterThan(before);
     expect(m.sent.at(-1)).toMatch(/Attached image/);
@@ -595,6 +598,79 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
       await settings(m.sw, { trusted: ["slopper"] });
       await shows(page, "slopper", "shown", /^$/);
     } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("waits for a media slot to fill, and wakes as soon as the image arrives", async () => {
+    const photo: MockPost = {
+      id: "610",
+      handle: "photopost",
+      name: "Photo Post",
+      text: "Wait for it [ai_slop .8]",
+      media: "photo",
+    };
+    const m = await launch([photo]);
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      // Still waiting past the 300ms fast-settle window while tweetPhoto is empty.
+      await sleep(450);
+      expect(m.sent).toEqual([]);
+
+      const arrived = Date.now();
+      await page.locator(cellOf("photopost")).evaluate((el) => {
+        const img = document.createElement("img");
+        img.src = "https://pbs.twimg.com/media/hydrated.jpg?format=jpg&name=small";
+        el.querySelector('[data-testid="tweetPhoto"]')!.append(img);
+      });
+      await poll(() => m.sent.length).toBe(1);
+      expect(Date.now() - arrived).toBeLessThan(500);
+      expect(m.sent[0]).toMatch(/Attached image/);
+      await shows(page, "photopost", "collapsed", /^AI slop from Photo Post/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("promotes a queued off-screen post when it scrolls into view", async () => {
+    const active: MockPost[] = [1, 2, 3, 4].map((n) => ({
+      id: `62${n}`,
+      handle: `slot${n}`,
+      name: `Slot ${n}`,
+      text: `Busy ${n}`,
+    }));
+    const releases: Record<string, () => void> = {};
+    const m = await launch(active, async (route) => {
+      const handle = handleIn(route.request().postDataJSON().input[0].text)!;
+      if (handle.startsWith("slot")) {
+        await new Promise<void>((resolve) => (releases[handle] = resolve));
+      }
+      await route.fulfill({ json: { answers: { kind: { probabilities: { fine: 1 } } } } });
+    });
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(4);
+
+      // Queue two below-screen posts inside the 1000px lookahead, b2 after b1.
+      const b1: MockPost = { id: "625", handle: "below1", name: "Below 1", text: "First below" };
+      const b2: MockPost = { id: "626", handle: "below2", name: "Below 2", text: "Second below" };
+      await append(page, `<div style="height:1700px"></div>${cell(b1)}`);
+      await sleep(500);
+      await append(page, `<div style="height:400px"></div>${cell(b2)}`);
+      await sleep(500);
+
+      // Scroll b1 into the viewport while keeping b2 below it.
+      await page.evaluate(() => window.scrollTo(0, 600));
+      await sleep(150);
+
+      // Free one slot: b1 (now visible) must go ahead of newer off-screen b2.
+      releases.slot1!();
+      await poll(() => m.sent.length).toBe(6);
+      expect(m.sent.slice(4).map(handleIn)).toEqual(["below1", "below2"]);
+    } finally {
+      for (const release of Object.values(releases)) release();
       await m.ctx.close();
     }
   });

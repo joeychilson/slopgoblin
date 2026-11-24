@@ -15,11 +15,10 @@ describe("addsContext", () => {
   const img2 = "https://pbs.twimg.com/media/b.jpg";
   const img3 = "https://pbs.twimg.com/media/c.jpg";
 
-  it("is true for a parent, images, text, note or note rating the post was judged without", () => {
+  it("is true for a parent, images, note or note rating the post was judged without", () => {
     expect(addsContext(reply, post())).toBe(true);
     expect(addsContext(post({ images: [img1] }), post())).toBe(true);
     expect(addsContext(post({ images: [img1, img2] }), post({ images: [img1] }))).toBe(true);
-    expect(addsContext(post({ text: "Now loaded" }), post({ text: "" }))).toBe(true);
     expect(addsContext(post({ readerNote: note }), post())).toBe(true);
     expect(
       addsContext(post({ readerNote: { ...note, rated: true } }), post({ readerNote: note })),
@@ -40,11 +39,19 @@ describe("addsContext", () => {
 });
 
 describe("questionKey", () => {
-  it("changes when parent context or image count changes, so cached scores are re-asked", () => {
+  it("changes for every kind of context that addsContext re-checks", () => {
     const alone = questionKey(post());
+    const unrated = { text: "Made with AI.", rated: false };
+    const rated = { ...unrated, rated: true };
+    const quote = { handle: "quoted", text: "Look" };
     expect(questionKey(post({ replyTo: { handle: "other", text: "Hi" } }))).not.toBe(alone);
     expect(questionKey(post({ replyTo: { handle: "Someone", text: "Part one" } }))).not.toBe(alone);
     expect(questionKey(post({ images: ["https://pbs.twimg.com/media/a.jpg"] }))).not.toBe(alone);
+    expect(questionKey(post({ readerNote: unrated }))).not.toBe(alone);
+    expect(questionKey(post({ readerNote: rated }))).not.toBe(
+      questionKey(post({ readerNote: unrated })),
+    );
+    expect(questionKey(post({ quote: { ...quote, readerNote: unrated } }))).not.toBe(alone);
   });
 });
 

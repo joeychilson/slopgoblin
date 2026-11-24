@@ -27,6 +27,7 @@ const KEEP = 2000;
 interface Tracked {
   post: Post;
   status: "idle" | "pending" | "done" | "failed";
+  queued?: boolean;
   scores: Scores;
   notSlop: boolean;
   revealed: boolean;
@@ -58,6 +59,7 @@ class Feed {
 
   private readonly observer: MutationObserver;
   private readonly intersection: IntersectionObserver;
+  private readonly viewport: IntersectionObserver;
   private readonly unwatchSettings: () => void;
   private readonly unwatchData: (() => void) | undefined;
 
@@ -69,6 +71,7 @@ class Feed {
     this.intersection = new IntersectionObserver((entries) => this.onIntersect(entries), {
       rootMargin: LOOKAHEAD,
     });
+    this.viewport = new IntersectionObserver((entries) => this.onViewport(entries));
     this.unwatchSettings = watchSettings((next) => this.onSettings(next));
     // Before first scan so followed authors and site-labeled posts are never sent to Google.
     this.unwatchData = site.watchData?.((data) => this.onData(data));
@@ -118,6 +121,17 @@ class Feed {
     }
   }
 
+  private onViewport(entries: IntersectionObserverEntry[]) {
+    const ids: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const postEl = entry.target.querySelector(`[${ID_ATTR}]`);
+      const t = postEl && this.trackedOf(postEl);
+      if (t?.queued) ids.push(t.post.id);
+    }
+    if (ids.length) void this.send({ type: "prioritize", ids });
+  }
+
   private scan() {
     let found = false;
     for (const el of this.site.findPosts()) {
@@ -149,6 +163,7 @@ class Feed {
       }
       // Observe the cell wrapper rather than `<article>`, which goes `display: none` when collapsed.
       this.intersection.observe(cell);
+      this.viewport.observe(cell);
       this.show(t, el, true);
       if (this.wantsRequest(t)) void this.request(t, !this.isNear(el));
     }
@@ -267,7 +282,12 @@ class Feed {
       // Don't send an empty placeholder shell before its text or media has appeared.
       if (!hasJudgeableContent(t.post)) return this.setIdle(t);
       asked = t.post;
-      res = await this.classify(t, false, priorityOf(this.site.container(el) ?? el));
+      t.queued = true;
+      try {
+        res = await this.classify(t, false, priorityOf(this.site.container(el) ?? el));
+      } finally {
+        t.queued = false;
+      }
     }
 
     if ("scores" in res) {
@@ -497,6 +517,7 @@ class Feed {
     clearTimeout(this.flushTimer);
     this.observer.disconnect();
     this.intersection.disconnect();
+    this.viewport.disconnect();
     this.unwatchSettings();
     this.unwatchData?.();
     document.removeEventListener("click", this.onBarClick, true);

@@ -15,7 +15,9 @@ const TOUCH_MS = 864e5;
 const RESUME_STAGGER_MS = 200;
 
 interface Waiter {
+  id: string;
   priority: Priority;
+  queued: number;
   resolve: () => void;
 }
 
@@ -49,8 +51,26 @@ export function classify(
   if (!pending) {
     pending = run(post, key, false, priority).finally(() => inflight.delete(asking));
     inflight.set(asking, pending);
+  } else if (priority === 0) {
+    prioritize([post.id]);
   }
   return pending;
+}
+
+/** Promotes queued posts that just entered the viewport ahead of off-screen lookahead. */
+export function prioritize(ids: string[]) {
+  if (!ids.length || !waiting.length) return;
+  const urgent = new Set(ids);
+  const now = Date.now();
+  const promoted: Waiter[] = [];
+  for (let i = waiting.length - 1; i >= 0; i--) {
+    if (!urgent.has(waiting[i]!.id)) continue;
+    const [waiter] = waiting.splice(i, 1);
+    waiter!.priority = 0;
+    waiter!.queued = now;
+    promoted.push(waiter!);
+  }
+  waiting.push(...promoted);
 }
 
 export async function setNotSlop(id: string, notSlop: boolean) {
@@ -89,8 +109,7 @@ async function ask(
   post: Post,
   priority: Priority,
 ): Promise<Scores | "blocked" | "unkeyed" | "unavailable"> {
-  const queued = Date.now();
-  await acquire(priority);
+  const queued = await acquire(post.id, priority);
   try {
     if (Date.now() - queued > STALE_MS) return "unavailable";
     const asked = { labels: post.labels, handle: post.author.handle, isReply: isReply(post) };
@@ -166,12 +185,16 @@ function wakePaused() {
   for (const wake of paused) wake();
 }
 
-async function acquire(priority: Priority) {
+function acquire(id: string, priority: Priority): Promise<number> {
+  const now = Date.now();
   if (active < CONCURRENCY) {
     active++;
-    return;
+    return Promise.resolve(now);
   }
-  await new Promise<void>((resolve) => waiting.push({ priority, resolve }));
+  return new Promise<number>((resolve) => {
+    const waiter: Waiter = { id, priority, queued: now, resolve: () => resolve(waiter.queued) };
+    waiting.push(waiter);
+  });
 }
 
 function release() {

@@ -18,6 +18,10 @@ export interface MockPost {
   thread?: boolean;
   /** What X shows under it, from its data. */
   label?: keyof typeof DISCLOSURES;
+  /** Media slot markup; leave `image` unset to simulate a slot waiting to hydrate. */
+  media?: "photo" | "video";
+  /** Image or video poster URL inside the media slot. */
+  image?: string;
 }
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
@@ -47,15 +51,21 @@ const PIXEL = Buffer.from(
   "base64",
 );
 
-export function cell({ id, handle, name, text, ad, note, thread }: MockPost) {
+export function cell({ id, handle, name, text, ad, note, thread, media, image }: MockPost) {
   const time = ad ? "" : `<a href="/${handle}/status/${id}"><time>1h</time></a>`;
+  const mediaSlot =
+    media === "photo"
+      ? `<div data-testid="tweetPhoto">${image ? `<img src="${image}">` : ""}</div>`
+      : media === "video"
+        ? `<div data-testid="videoPlayer">${image ? `<video poster="${image}"></video>` : ""}</div>`
+        : "";
   const noted = note
     ? `<div data-testid="birdwatch-pivot"><span>Readers added context</span><div dir="ltr">${note}</div></div>`
     : "";
   const article = `<article data-testid="tweet" tabindex="0"><div style="display:flex;gap:12px;padding:12px">
     <div><div data-testid="Tweet-User-Avatar"><img src="https://pbs.twimg.com/profile_images/${handle}/a.jpg"></div>${thread ? "<div></div>" : ""}</div>
     <div><div data-testid="User-Name"><a href="/${handle}">${name}</a> <a href="/${handle}">@${handle}</a> ${time}</div>
-    <div data-testid="tweetText" lang="en">${text}</div>${noted}</div>
+    <div data-testid="tweetText" lang="en">${text}</div>${mediaSlot}${noted}</div>
   </div></article>`;
   const body = ad ? `<div data-testid="placementTracking">${article}</div>` : article;
   return `<div data-testid="cellInnerDiv">${body}</div>`;

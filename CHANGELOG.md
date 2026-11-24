@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0
+
+- **Better detection with fewer mistakes.** Catches more ragebait and posts quoting fakes under a
+  community note, with fewer false positives on news. On everyday feeds, Balanced now hides about
+  1 real post in 200 by mistake (down from 1 in 170) and catches over 3 in 4 junk posts.
+- **Switching one kind on catches more of it.** A post is now hidden when its likeliest kind is
+  switched on, as well as when at least half of its junk score is. With every kind on, nothing
+  changes.
+- **Faster, smarter feed checking.** Posts on screen are checked ahead of posts below the fold;
+  posts with empty media slots wait briefly for images or video posters to load and wake as soon
+  as they arrive; posts whose text or media arrives late are judged once it loads.
+- **Live follows and unfollows take effect right away.** Following or unfollowing an account on X
+  updates your feed without reloading the page.
+- **Side panel improvements:** click the "Hidden posts" title to show one kind at a time, undo a
+  let-through post in place before it folds away (synced with undos from the feed or Settings),
+  and scroll to load older hidden posts.
+- **Every post is checked once more** after updating, since the question changed. Checking still
+  costs about 10¢ per 1,000 posts on a paid key.
+
 ## 0.2.1
 
 - **Replacing an API key takes effect right away.** Swapping keys during a rate limit no longer

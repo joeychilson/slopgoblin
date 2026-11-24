@@ -1,6 +1,6 @@
 # Privacy policy
 
-_Last updated November 21, 2026_
+_Last updated November 24, 2026_
 
 Slop Goblin is a Chrome extension that hides junk posts from your X feed. It has no server
 and collects nothing for its developer: no accounts, analytics or telemetry. To judge posts it

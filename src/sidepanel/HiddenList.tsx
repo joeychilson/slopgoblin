@@ -1,289 +1,421 @@
 import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
-import type { HiddenPost } from "../core/checked.ts";
+import type { CheckedPost, HiddenPost } from "../core/checked.ts";
 import type { RuntimeMessage } from "../core/messages.ts";
 import { reason } from "../core/policy.ts";
 import { displayName } from "../core/post.ts";
 import { updateSettings } from "../core/settings.ts";
-import { CATEGORY, type CategoryId } from "../core/taxonomy.ts";
+import { CATEGORIES, CATEGORY, type CategoryId } from "../core/taxonomy.ts";
 import { ICONS, Icon } from "./controls.tsx";
 import { sendToTab } from "./hooks.ts";
 
 /** Matches `row-out` in panel.css. */
 const LEAVE_MS = 240;
-/** Matches `.item-actions` in panel.css. */
+/** Matches `.unfold` in panel.css. */
 const OPEN_MS = 320;
+/** Long enough to reach Undo. The row stays while the pointer is on it. */
+const SETTLE_MS = 5000;
+/** An undone row waits this long at most for the list to have it back. */
+const RESTORE_MS = 2000;
 const PAGE_SIZE = 50;
-const UNDO_MS = 6000;
 
-type UndoAction =
-  | { kind: "not-slop"; id: string; text: string }
-  | { kind: "trust"; handle: string; text: string };
+type LetThrough = "not-slop" | "trust";
+
+/**
+ * A row the reader just let through. It stays where it was, saying what happened with an Undo,
+ * then folds away, like the post's bar in the feed.
+ */
+interface Settling {
+  item: HiddenPost;
+  action: LetThrough;
+  leaving: boolean;
+  /** Remaining ms before folding away, updated when paused on hover. */
+  remaining: number;
+  /** Timestamp when the current countdown slice started; undefined while hovered. */
+  resumedAt?: number;
+  /** Another post by an author just marked "Always show": it only folds away. */
+  quiet?: boolean;
+  /** Shown as hidden again while the list catches up. */
+  undone?: boolean;
+}
 
 export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: boolean }) {
-  const { tabId, hidden } = props;
+  const { tabId, hidden, peek } = props;
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState<CategoryId | "">("");
+  const [choosing, setChoosing] = useState(false);
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const [undo, setUndo] = useState<UndoAction | null>(null);
+  const [settling, setSettling] = useState<ReadonlyMap<string, Settling>>(new Map());
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const title = useRef<HTMLButtonElement>(null);
+  const picker = useRef<HTMLDivElement>(null);
+  const kindsId = useId();
 
+  // Rows there when the panel opens arrive one after another; rows that turn up later, from a
+  // new post or a filter, arrive at once.
   const firstOrder = useRef<Map<string, number> | null>(null);
   firstOrder.current ??= new Map(hidden.map(({ post }, i) => [post.id, Math.min(i, 10)]));
+  useEffect(() => {
+    firstOrder.current = new Map();
+  }, []);
 
-  const categoryCounts = useMemo(() => {
+  // Let-through rows stay in their place until they fold away.
+  const rows = useMemo(() => {
+    const listed = new Set(hidden.map(({ post }) => post.id));
+    const extra = [...settling.values()].filter(({ item }) => !listed.has(item.post.id));
+    if (!extra.length) return hidden;
+    return [...hidden, ...extra.map(({ item }) => item)].sort((a, b) => b.post.at - a.post.at);
+  }, [hidden, settling]);
+
+  // In the order Settings lists them, so they stay put as counts change.
+  const kinds = useMemo(() => {
     const counts = new Map<CategoryId, number>();
-    for (const { verdict } of hidden) {
+    for (const { verdict } of rows) {
       counts.set(verdict.category, (counts.get(verdict.category) ?? 0) + 1);
     }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    return CATEGORIES.flatMap(({ id }) => {
+      const count = counts.get(id);
+      return count ? [[id, count] as const] : [];
+    });
+  }, [rows]);
+
+  const canFilter = kinds.length >= 2;
+  const active = canFilter && kinds.some(([id]) => id === filter) ? filter : "";
+  const shown = useMemo(
+    () => (active ? rows.filter(({ verdict }) => verdict.category === active) : rows),
+    [rows, active],
+  );
+  const visible = shown.slice(0, limit);
+  const remaining = shown.length - visible.length;
+
+  useEffect(() => {
+    if (filter && !active) setFilter("");
+    if (choosing && !canFilter) setChoosing(false);
+  }, [filter, active, choosing, canFilter]);
+
+  useEffect(() => {
+    if (!choosing) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (title.current?.contains(target) || picker.current?.contains(target)) return;
+      setChoosing(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [choosing]);
+
+  // Undone rows hand back to the list once it has them again.
+  useEffect(() => {
+    const listed = new Set(hidden.map(({ post }) => post.id));
+    const back = [...settling.values()].filter((s) => s.undone && listed.has(s.item.post.id));
+    if (back.length) drop(...back.map((s) => s.item.post.id));
   }, [hidden]);
 
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
+  // Older posts load as the reader scrolls near the end, without a button. Rows grow in from
+  // nothing as they arrive, so it waits for a scroll rather than watching where the end is.
+  const loaded = visible.length;
   useEffect(() => {
-    if (filter && !categoryCounts.some(([id]) => id === filter)) setFilter("");
-  }, [filter, categoryCounts]);
+    if (!remaining) return;
+    const onScroll = () => {
+      if (scrollY + innerHeight < document.documentElement.scrollHeight - 600) return;
+      setLimit((n) => Math.max(n, loaded + PAGE_SIZE));
+    };
+    addEventListener("scroll", onScroll, { passive: true });
+    return () => removeEventListener("scroll", onScroll);
+  }, [loaded, remaining]);
 
-  const activeFilter = filter && categoryCounts.some(([id]) => id === filter) ? filter : "";
-  const filtered = useMemo(
-    () =>
-      activeFilter ? hidden.filter(({ verdict }) => verdict.category === activeFilter) : hidden,
-    [hidden, activeFilter],
-  );
-  const visible = filtered.slice(0, limit);
-  const remaining = filtered.length - visible.length;
-
-  useEffect(() => {
-    if (!undo) return;
-    const timer = setTimeout(() => setUndo(null), UNDO_MS);
-    return () => clearTimeout(timer);
-  }, [undo]);
-
-  function performUndo() {
-    if (!undo) return;
-    if (undo.kind === "not-slop") {
-      void chrome.runtime.sendMessage<RuntimeMessage>({
-        type: "not-slop",
-        id: undo.id,
-        notSlop: false,
-      });
-    } else {
-      const handle = undo.handle;
-      void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
-    }
-    setUndo(null);
+  function later(id: string, ms: number, run: () => void) {
+    clearTimeout(timers.current.get(id));
+    timers.current.set(
+      id,
+      setTimeout(() => {
+        timers.current.delete(id);
+        run();
+      }, ms),
+    );
   }
 
-  if (!hidden.length && !props.peek && !undo) return null;
+  function drop(...ids: string[]) {
+    setSettling((prev) => {
+      const next = new Map(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }
 
+  function letThrough(item: HiddenPost, action: LetThrough) {
+    const { id } = item.post;
+    const handle = item.post.handle.toLowerCase();
+    if (action === "not-slop") {
+      void chrome.runtime.sendMessage<RuntimeMessage>({ type: "not-slop", id, notSlop: true });
+    } else {
+      void updateSettings((s) => ({ trusted: [...new Set([...s.trusted, handle])] }));
+    }
+    // The author's other posts go too, and fold away now.
+    const others =
+      action === "trust"
+        ? rows.filter((o) => o.post.id !== id && o.post.handle.toLowerCase() === handle)
+        : [];
+    const now = Date.now();
+    setOpen(null);
+    setSettling((prev) => {
+      const next = new Map(prev).set(id, {
+        item,
+        action,
+        leaving: false,
+        remaining: SETTLE_MS,
+        resumedAt: now,
+      });
+      for (const other of others) {
+        next.set(other.post.id, {
+          item: other,
+          action,
+          leaving: true,
+          remaining: 0,
+          quiet: true,
+        });
+      }
+      return next;
+    });
+    later(id, SETTLE_MS, () => leave(id));
+    for (const other of others) later(other.post.id, LEAVE_MS, () => drop(other.post.id));
+  }
+
+  function pauseSettle(id: string) {
+    const s = settling.get(id);
+    if (!s || s.leaving || s.undone || s.quiet || s.resumedAt === undefined) return;
+    clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
+    const remaining = Math.max(0, s.remaining - (Date.now() - s.resumedAt));
+    setSettling((prev) => {
+      const current = prev.get(id);
+      return current
+        ? new Map(prev).set(id, { ...current, remaining, resumedAt: undefined })
+        : prev;
+    });
+  }
+
+  function resumeSettle(id: string) {
+    const s = settling.get(id);
+    if (!s || s.leaving || s.undone || s.quiet || s.resumedAt !== undefined) return;
+    const wait = Math.max(400, s.remaining);
+    setSettling((prev) => {
+      const current = prev.get(id);
+      return current
+        ? new Map(prev).set(id, { ...current, remaining: wait, resumedAt: Date.now() })
+        : prev;
+    });
+    later(id, wait, () => leave(id));
+  }
+
+  function leave(id: string) {
+    const row = document.querySelector(`.item[data-id="${CSS.escape(id)}"]`);
+    // Not from under a pointer that may be on its way to Undo.
+    if (row?.matches(":hover")) return later(id, 1000, () => leave(id));
+    // Keyboard focus on the row moves on to the next one rather than falling off the page.
+    if (row?.contains(document.activeElement)) {
+      const next = row.nextElementSibling ?? row.previousElementSibling;
+      (next?.querySelector<HTMLElement>(".item-open") ?? title.current)?.focus();
+    }
+    setSettling((prev) => {
+      const settled = prev.get(id);
+      return settled ? new Map(prev).set(id, { ...settled, leaving: true }) : prev;
+    });
+    later(id, LEAVE_MS, () => drop(id));
+  }
+
+  function undo(id: string) {
+    const settled = settling.get(id);
+    if (!settled) return;
+    const { item, action } = settled;
+    const handle = item.post.handle.toLowerCase();
+    if (action === "not-slop") {
+      void chrome.runtime.sendMessage<RuntimeMessage>({ type: "not-slop", id, notSlop: false });
+    } else {
+      void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
+    }
+    setSettling((prev) =>
+      new Map(prev).set(id, { ...settled, undone: true, leaving: false, resumedAt: undefined }),
+    );
+    later(id, RESTORE_MS, () => drop(id));
+    // Focus stays on the row, now hidden again.
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(`.item[data-id="${CSS.escape(id)}"] .item-open`)?.focus(),
+    );
+  }
+
+  function toggleKinds() {
+    setChoosing((was) => {
+      if (!was) setOpen(null);
+      return !was;
+    });
+  }
+
+  function pick(next: CategoryId | "") {
+    setFilter(next);
+    setLimit(PAGE_SIZE);
+    setChoosing(false);
+    title.current?.focus();
+  }
+
+  if (!rows.length && !peek) return null;
+
+  const heading = active ? CATEGORY[active].label : "Hidden posts";
   return (
-    <section
-      class="hidden"
-      aria-labelledby={hidden.length || props.peek ? "hidden-title" : undefined}
-    >
-      {(hidden.length > 0 || props.peek) && (
-        <div class="list-head">
-          <h2 id="hidden-title">Hidden posts</h2>
-          <Peek on={props.peek} />
-        </div>
-      )}
+    <section class="hidden" aria-labelledby="hidden-title">
+      <div class="list-head">
+        <h2 id="hidden-title">
+          {canFilter ? (
+            <button
+              ref={title}
+              type="button"
+              class={active ? "list-title is-filtered" : "list-title"}
+              aria-expanded={choosing}
+              aria-controls={kindsId}
+              title="Show one kind"
+              onClick={toggleKinds}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && choosing) {
+                  event.preventDefault();
+                  setChoosing(false);
+                } else if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setOpen(null);
+                  setChoosing(true);
+                  requestAnimationFrame(() => focusKind(kindsId, 0));
+                }
+              }}
+            >
+              <span key={heading} class="list-title-text">
+                {heading}
+              </span>
+              {active && <span class="list-title-count">{shown.length}</span>}
+              <Icon d={ICONS.chevron} size={16} weight={2.4} />
+            </button>
+          ) : (
+            heading
+          )}
+        </h2>
+        <Peek on={peek} />
+      </div>
 
-      {undo && (
-        <div class="undo-bar" role="status">
-          <span>{undo.text}</span>
-          <button type="button" class="undo-link" onClick={performUndo}>
-            Undo
-          </button>
-        </div>
-      )}
-
-      {categoryCounts.length >= 2 && (
-        <CategoryFilter
-          value={activeFilter}
-          total={hidden.length}
-          counts={categoryCounts}
-          onChange={(next) => {
-            setFilter(next);
-            setLimit(PAGE_SIZE);
-          }}
-        />
-      )}
-
-      {visible.length > 0 && (
-        <ul class="list" onKeyDown={(event) => event.key === "Escape" && setOpen(null)}>
-          {visible.map((item) => (
-            <Item
-              key={item.post.id}
-              item={item}
-              tabId={tabId}
-              order={firstOrder.current!.get(item.post.id) ?? -1}
-              open={open === item.post.id}
-              onToggle={(next) => setOpen(next ? item.post.id : null)}
-              onUndo={setUndo}
-            />
-          ))}
-        </ul>
-      )}
-
-      {remaining > 0 && (
-        <button
-          type="button"
-          class="button small load-more"
-          onClick={() => setLimit((n) => n + PAGE_SIZE)}
+      {canFilter && (
+        <div
+          ref={picker}
+          class={choosing ? "unfold kinds is-open" : "unfold kinds"}
+          id={kindsId}
+          inert={!choosing}
         >
-          Show {Math.min(remaining, PAGE_SIZE)} older ({remaining} more)
-        </button>
+          <div>
+            <ul
+              class="rows"
+              aria-label="Show"
+              onKeyDown={(event) =>
+                onKindsKey(event, kindsId, () => {
+                  setChoosing(false);
+                  title.current?.focus();
+                })
+              }
+            >
+              <Kind label="All" count={rows.length} on={!active} i={0} onPick={() => pick("")} />
+              {kinds.map(([id, count], i) => (
+                <Kind
+                  key={id}
+                  label={CATEGORY[id].label}
+                  count={count}
+                  on={active === id}
+                  i={i + 1}
+                  onPick={() => pick(id)}
+                />
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {visible.length > 0 ? (
+        <ul
+          class="list"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || !open) return;
+            const closing = open;
+            setOpen(null);
+            requestAnimationFrame(() =>
+              document
+                .querySelector<HTMLElement>(`.item[data-id="${CSS.escape(closing)}"] .item-open`)
+                ?.focus(),
+            );
+          }}
+        >
+          {visible.map((item) => {
+            const { id } = item.post;
+            const settled = settling.get(id);
+            const activeSettled =
+              settled && !settled.undone && !settled.quiet ? settled : undefined;
+            return (
+              <Item
+                key={id}
+                item={item}
+                tabId={tabId}
+                filtered={Boolean(active)}
+                order={firstOrder.current!.get(id) ?? -1}
+                open={open === id}
+                settled={activeSettled?.action}
+                leaving={Boolean(settled?.leaving)}
+                onToggle={(next) => {
+                  if (next) setChoosing(false);
+                  setOpen(next ? id : null);
+                }}
+                onLetThrough={(action) => letThrough(item, action)}
+                onUndo={() => undo(id)}
+                onHover={(inside) => (inside ? pauseSettle(id) : resumeSettle(id))}
+              />
+            );
+          })}
+        </ul>
+      ) : (
+        <p class="hint">Nothing hidden right now.</p>
       )}
     </section>
   );
 }
 
-function CategoryFilter(props: {
-  value: CategoryId | "";
-  total: number;
-  counts: [CategoryId, number][];
-  onChange: (value: CategoryId | "") => void;
-}) {
-  const { value, total, counts, onChange } = props;
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const menuId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      setOpen(false);
-      trigger.current?.focus();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  function focusItem(index: number) {
-    const items = menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
-    if (!items?.length) return;
-    items[((index % items.length) + items.length) % items.length]!.focus();
-  }
-
-  function onMenuKeyDown(event: KeyboardEvent) {
-    const items = [
-      ...(menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []),
-    ];
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      focusItem(current + 1);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      focusItem(current <= 0 ? items.length - 1 : current - 1);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      focusItem(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      focusItem(items.length - 1);
-    }
-  }
-
-  function pick(next: CategoryId | "") {
-    onChange(next);
-    setOpen(false);
-    trigger.current?.focus();
-  }
-
-  const activeCount = value ? (counts.find(([id]) => id === value)?.[1] ?? 0) : total;
-
+function Kind(props: { label: string; count: number; on: boolean; i: number; onPick: () => void }) {
   return (
-    <div ref={root} class="filter-bar">
-      <div class="filter-dropdown">
-        <button
-          ref={trigger}
-          type="button"
-          class={value ? "filter-trigger is-active" : "filter-trigger"}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          aria-controls={menuId}
-          onClick={() => setOpen((was) => !was)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setOpen(true);
-              queueMicrotask(() => focusItem(0));
-            }
-          }}
-        >
-          <span>{value ? CATEGORY[value].label : "All categories"}</span>
-          <span class="filter-count">{activeCount}</span>
-          <Icon d={ICONS.chevron} size={14} weight={2.2} />
-        </button>
-
-        {open && (
-          <div
-            ref={menu}
-            id={menuId}
-            class="filter-menu"
-            role="menu"
-            aria-label="Filter hidden posts by category"
-            onKeyDown={onMenuKeyDown}
-          >
-            <FilterOption
-              label="All categories"
-              count={total}
-              selected={value === ""}
-              onSelect={() => pick("")}
-            />
-            <div class="filter-sep" role="separator" />
-            {counts.map(([id, count]) => (
-              <FilterOption
-                key={id}
-                label={CATEGORY[id].label}
-                count={count}
-                selected={value === id}
-                onSelect={() => pick(id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {value && (
-        <button type="button" class="undo-link" onClick={() => onChange("")}>
-          Show all
-        </button>
-      )}
-    </div>
+    <li>
+      <button
+        type="button"
+        class="row"
+        aria-pressed={props.on}
+        style={`--i: ${props.i}`}
+        onClick={props.onPick}
+      >
+        <span class="row-text">
+          <span class="row-title">{props.label}</span>
+        </span>
+        <span class="row-count">{props.count}</span>
+      </button>
+    </li>
   );
 }
 
-function FilterOption(props: {
-  label: string;
-  count: number;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitemradio"
-      aria-checked={props.selected}
-      class={props.selected ? "filter-option is-selected" : "filter-option"}
-      onClick={props.onSelect}
-    >
-      <span class="filter-check">
-        {props.selected && <Icon d={ICONS.check} size={14} weight={2.3} />}
-      </span>
-      <span class="filter-label">{props.label}</span>
-      <span class="filter-option-count">{props.count}</span>
-    </button>
-  );
+function focusKind(trayId: string, index: number) {
+  const kinds = document.querySelectorAll<HTMLElement>(`[id="${trayId}"] .row`);
+  if (kinds.length) kinds[(index + kinds.length) % kinds.length]!.focus();
+}
+
+function onKindsKey(event: KeyboardEvent, trayId: string, close: () => void) {
+  const kinds = [...document.querySelectorAll<HTMLElement>(`[id="${trayId}"] .row`)];
+  const at = kinds.indexOf(document.activeElement as HTMLElement);
+  const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: kinds.length - 1 }[event.key];
+  if (event.key === "Escape") {
+    event.preventDefault();
+    close();
+  } else if (to !== undefined) {
+    event.preventDefault();
+    focusKind(trayId, to);
+  }
 }
 
 function Peek({ on }: { on: boolean }) {
@@ -306,19 +438,26 @@ function Peek({ on }: { on: boolean }) {
 function Item(props: {
   item: HiddenPost;
   tabId?: number;
+  filtered: boolean;
   order: number;
   open: boolean;
+  settled?: LetThrough;
+  leaving: boolean;
   onToggle: (open: boolean) => void;
-  onUndo: (action: UndoAction) => void;
+  onLetThrough: (action: LetThrough) => void;
+  onUndo: () => void;
+  onHover: (inside: boolean) => void;
 }) {
-  const { item, tabId, order, open, onToggle, onUndo } = props;
+  const { item, tabId, filtered, open, settled, leaving, onToggle } = props;
   const { post, verdict } = item;
-  const [leaving, setLeaving] = useState(false);
+  const [order] = useState(props.order);
   const row = useRef<HTMLLIElement>(null);
   const isNsfw = verdict.category === "nsfw";
   const { label, midSentence, possibly } = reason(verdict);
   const name = displayName(post);
   const actionsId = useId();
+  // When filtered to one kind, skip echoing the firm category name on every row.
+  const showWhy = !filtered || possibly;
 
   useEffect(() => {
     if (!open) return;
@@ -335,90 +474,140 @@ function Item(props: {
     if (!found) await chrome.tabs.create({ url: post.url });
   }
 
-  function letThrough() {
-    if (leaving) return;
-    onToggle(false);
-    setLeaving(true);
-    setTimeout(() => {
-      void chrome.runtime.sendMessage<RuntimeMessage>({
-        type: "not-slop",
-        id: post.id,
-        notSlop: true,
-      });
-      onUndo({ kind: "not-slop", id: post.id, text: "This post won't be hidden again" });
-    }, LEAVE_MS);
-  }
-
-  function trust() {
-    const handle = post.handle.toLowerCase();
-    onToggle(false);
-    void updateSettings((s) => ({ trusted: [...new Set([...s.trusted, handle])] }));
-    onUndo({ kind: "trust", handle, text: `Posts from ${name} will always show` });
-  }
-
-  const classes = ["item", open && "is-open", leaving && "is-leaving"].filter(Boolean).join(" ");
+  const classes = ["item", open && "is-open", settled && "is-settled", leaving && "is-leaving"]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <li ref={row} class={classes} style={order >= 0 ? `--order: ${order}` : undefined}>
+    <li
+      ref={row}
+      class={classes}
+      data-id={post.id}
+      style={order >= 0 ? `--order: ${order}` : undefined}
+      onMouseEnter={settled ? () => props.onHover(true) : undefined}
+      onMouseLeave={settled ? () => props.onHover(false) : undefined}
+    >
       <div class="item-inner">
-        <button
-          type="button"
-          class="item-open"
-          aria-expanded={open}
-          aria-controls={actionsId}
-          onClick={() => onToggle(!open)}
-        >
-          <span class="avatar">
-            {isNsfw ? (
-              <Icon d={ICONS.eyeOff} size={16} />
-            ) : (
-              post.avatar && (
-                <img
-                  src={post.avatar}
-                  alt=""
-                  width="32"
-                  height="32"
-                  loading="lazy"
-                  decoding="async"
-                />
-              )
-            )}
-          </span>
-          <span class="item-body">
-            <span class="item-line">
-              <span class="item-name">{name}</span>
-              <span class={verdict.labeled || possibly ? "item-why is-quiet" : "item-why"}>
-                {possibly ? `Possibly ${midSentence}` : label}
+        {settled ? (
+          <Settled post={post} nsfw={isNsfw} action={settled} onUndo={props.onUndo} />
+        ) : (
+          <>
+            <button
+              type="button"
+              class="item-open"
+              aria-expanded={open}
+              aria-controls={actionsId}
+              onClick={() => onToggle(!open)}
+            >
+              <Avatar post={post} nsfw={isNsfw} />
+              <span class="item-body">
+                <span class="item-line">
+                  <span class="item-name">{name}</span>
+                  {showWhy && (
+                    <span class={verdict.labeled || possibly ? "item-why is-quiet" : "item-why"}>
+                      {possibly ? `Possibly ${midSentence}` : label}
+                    </span>
+                  )}
+                </span>
+                <span class={isNsfw || !post.text ? "item-text is-empty" : "item-text"}>
+                  {isNsfw ? "Text hidden" : post.text || "Media only"}
+                </span>
               </span>
-            </span>
-            <span class={isNsfw || !post.text ? "item-text is-empty" : "item-text"}>
-              {isNsfw ? "Text hidden" : post.text || "Media only"}
-            </span>
-          </span>
-        </button>
-        <div class="item-actions" id={actionsId} inert={!open}>
-          <div>
-            <div class="tray">
-              <button type="button" style="--i: 0" onClick={showInFeed}>
-                <Icon d={ICONS.eye} size={16} />
-                <span>Show in feed</span>
-              </button>
-              {!verdict.labeled && (
-                <>
-                  <button type="button" style="--i: 1" onClick={letThrough}>
-                    <Icon d={ICONS.check} size={16} />
-                    <span>Not {midSentence}</span>
+            </button>
+            <div class={open ? "unfold is-open" : "unfold"} id={actionsId} inert={!open}>
+              <div>
+                <div class="tray">
+                  <button type="button" style="--i: 0" onClick={showInFeed}>
+                    <Icon d={ICONS.eye} size={16} />
+                    <span>Show in feed</span>
                   </button>
-                  <button type="button" style="--i: 2" onClick={trust}>
-                    <Icon d={ICONS.trust} size={16} />
-                    <span>Always show {name}</span>
-                  </button>
-                </>
-              )}
+                  {!verdict.labeled && (
+                    <>
+                      <button
+                        type="button"
+                        style="--i: 1"
+                        onClick={() => props.onLetThrough("not-slop")}
+                      >
+                        <Icon d={ICONS.check} size={16} />
+                        <span>Not {midSentence}</span>
+                      </button>
+                      <button
+                        type="button"
+                        style="--i: 2"
+                        onClick={() => props.onLetThrough("trust")}
+                      >
+                        <Icon d={ICONS.trust} size={16} />
+                        <span>Always show {name}</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </li>
+  );
+}
+
+function Avatar({ post, nsfw }: { post: CheckedPost; nsfw: boolean }) {
+  const [broken, setBroken] = useState(false);
+  const initial = displayName(post).replace(/^@/, "").trim().charAt(0).toUpperCase();
+  return (
+    <span class="avatar" aria-hidden="true">
+      {nsfw ? (
+        <Icon d={ICONS.eyeOff} size={16} />
+      ) : post.avatar && !broken ? (
+        <img
+          src={post.avatar}
+          alt=""
+          width="32"
+          height="32"
+          loading="lazy"
+          decoding="async"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <span class="avatar-initial">{initial}</span>
+      )}
+    </span>
+  );
+}
+
+/** What letting a post through did, in the words its bar in the feed uses. */
+function Settled(props: {
+  post: CheckedPost;
+  nsfw: boolean;
+  action: LetThrough;
+  onUndo: () => void;
+}) {
+  const undoButton = useRef<HTMLButtonElement>(null);
+  const messageId = useId();
+  const name = displayName(props.post);
+  useEffect(() => undoButton.current?.focus(), []);
+  return (
+    <div class="item-settled">
+      <Avatar post={props.post} nsfw={props.nsfw} />
+      <span class="item-body">
+        <span class="item-line">
+          <span class="item-name">{name}</span>
+          <button
+            ref={undoButton}
+            type="button"
+            class="item-why item-undo"
+            aria-describedby={messageId}
+            onClick={props.onUndo}
+          >
+            Undo
+          </button>
+        </span>
+        <span id={messageId} class="item-text">
+          {props.action === "trust"
+            ? `Posts from ${name} will always show`
+            : "This post won't be hidden again"}
+        </span>
+      </span>
+    </div>
   );
 }
 

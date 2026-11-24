@@ -368,28 +368,33 @@ describe("on X", { timeout: 30_000 }, () => {
     }
   });
 
-  it("lets a post through from the side panel, in the tab too, and undoes it", async () => {
-    await panel.click('.item:has-text("Growth Guru") .item-open');
-    await panel.click('.item:has-text("Growth Guru") button:has-text("Not AI slop")');
+  it("lets a post through from the side panel, in the tab too, and undoes it in place", async () => {
+    const row = '.item:has-text("Growth Guru")';
+    await panel.click(`${row} .item-open`);
+    await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
-    await poll(() => panel.innerText(".hidden")).not.toContain("Growth Guru");
-    await poll(() => panel.innerText(".undo-bar")).toMatch(/won't be hidden again/);
-    await panel.click(".undo-bar .undo-link");
+    await poll(() => panel.innerText(`${row}.is-settled`)).toMatch(/won't be hidden again/);
+    await panel.click(`${row} .item-undo`);
     await shows(x, "slopper", "collapsed");
-    await poll(() => panel.innerText(".hidden")).toContain("Growth Guru");
-    // Let it through again so subsequent counts stay consistent.
-    await panel.click('.item:has-text("Growth Guru") .item-open');
-    await panel.click('.item:has-text("Growth Guru") button:has-text("Not AI slop")');
+    await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
+    // Let it through again: this time it folds away on its own, once the pointer is off it.
+    await panel.click(`${row} .item-open`);
+    await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
+    await panel.mouse.move(0, 0);
+    await poll(() => panel.innerText(".hidden")).not.toContain("Growth Guru");
   });
 
-  it("filters hidden posts by category in the side panel", async () => {
-    await panel.click(".filter-trigger");
-    await panel.click('.filter-option:has-text("Ragebait")');
+  it("shows one kind of hidden post, picked from the list's title", async () => {
+    await panel.click(".list-title");
+    await panel.click('.kinds .row:has-text("Ragebait")');
     await poll(() => panel.locator(".list .item").count()).toBe(1);
     expect(await panel.innerText(".list")).toContain("Rage Farm");
-    await panel.click('.filter-bar button:has-text("Show all")');
+    expect(await panel.innerText(".list-title-text")).toBe("Ragebait");
+    await panel.click(".list-title");
+    await panel.click('.kinds .row:has-text("All")');
     await poll(() => panel.locator(".list .item").count()).toBeGreaterThan(1);
+    expect(await panel.innerText(".list-title-text")).toBe("Hidden posts");
   });
 
   it("re-checks a post when a lazy-loaded image arrives later", async () => {

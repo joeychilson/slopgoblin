@@ -79,7 +79,7 @@ function Caption(props: { checked: number; pending: number }) {
   return (
     <div class="caption">
       <h2>Hidden lately</h2>
-      <span>
+      <span class={props.pending > 0 ? "is-busy" : undefined}>
         {props.checked.toLocaleString()} checked
         {props.pending > 0 && `, ${props.pending} on the way`}
       </span>

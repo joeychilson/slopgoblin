@@ -40,8 +40,8 @@ content script (x.com)            service worker                    Gemini
 - **One multiple-choice question per post.** The model is asked which label fits best: one
   of the junk categories, or `fine`. It answers with a probability for every option. A post
   is hidden when its chance of being junk is more than your strictness asks for (75%, 60% or
-  50%), and either its likeliest kind or at least half of that chance is kinds you have
-  switched on; the bar names the likeliest of those. Asking once, with `fine` spelled out as
+  50%), its likeliest kind has at least 30% of it, and either that kind or at least half of
+  the junk chance is kinds you have switched on; the bar names the likeliest of those. Asking once, with `fine` spelled out as
   an option, is what keeps real posts in: separate yes/no questions per category each found
   something to object to in ordinary fan posts and replies. The kinds overlap, so a post
   that's several kinds has its chance split between them. That's why the switches go by the
@@ -126,18 +126,18 @@ posts hidden by mistake / junk caught, counting only posts with a firm label:
 
 | posts from                      | real | junk | Relaxed | Balanced | Strict  |
 | ------------------------------- | ---- | ---- | ------- | -------- | ------- |
-| a timeline                      | 207  | 26   | 0 / 22  | 0 / 25   | 3 / 26  |
-| a later timeline, held out      | 100  | 15   | 0 / 8   | 0 / 11   | 1 / 13  |
+| a timeline                      | 207  | 26   | 0 / 22  | 0 / 25   | 2 / 25  |
+| a later timeline, held out      | 100  | 15   | 0 / 8   | 0 / 11   | 1 / 12  |
 | reply threads                   | 221  | 12   | 0 / 7   | 1 / 10   | 2 / 11  |
 | spam-prone searches             | 16   | 69   | 0 / 67  | 1 / 69   | 2 / 69  |
 | posts with a note               | 4    | 13   | 0 / 11  | 0 / 13   | 0 / 13  |
-| posts quoting those             | 17   | 41   | 0 / 30  | 0 / 38   | 0 / 39  |
-| a tech-heavy timeline           | 153  | 7    | 1 / 5   | 2 / 6    | 5 / 6   |
-| news accounts and news searches | 214  | 16   | 1 / 15  | 6 / 16   | 13 / 16 |
+| posts quoting those             | 17   | 41   | 0 / 29  | 0 / 36   | 0 / 36  |
+| a tech-heavy timeline           | 153  | 7    | 1 / 5   | 2 / 6    | 4 / 6   |
+| news accounts and news searches | 214  | 16   | 1 / 15  | 4 / 16   | 7 / 16  |
 | AI searches                     | 33   | 34   | 0 / 34  | 0 / 34   | 0 / 34  |
 | opinion and hype searches       | 48   | 3    | 0 / 3   | 0 / 3    | 0 / 3   |
-| replies under viral news        | 163  | 10   | 0 / 2   | 1 / 2    | 1 / 3   |
-| the last five, 3 in 10 held out | 249  | 31   | 0 / 24  | 3 / 25   | 8 / 25  |
+| replies under viral news        | 163  | 10   | 0 / 2   | 0 / 2    | 0 / 3   |
+| the last five, 3 in 10 held out | 249  | 31   | 0 / 24  | 2 / 25   | 5 / 25  |
 | written to order                | 171  | 151  | 0 / 131 | 1 / 141  | 1 / 145 |
 
 The later timeline was collected after the wording of the time was frozen and labeled in one
@@ -147,17 +147,16 @@ were read, were held out of the tuning. They were labeled before the model's ans
 looked at, and the posts where labels and model disagreed were checked again.
 
 On the five sets that look like everyday reading (the three timelines and both sets of
-replies), Balanced hides 4 of 844 real posts and catches 54 of 70 junk ones, Strict hides 12
-and catches 59, and Relaxed hides 1 and catches 44. What gets through at Balanced is mostly
+replies, the eval's `everyday` row), Balanced hides 3 of 844 real posts and catches 54 of 70
+junk ones, Strict hides 9 and catches 57, and Relaxed hides 1 and catches 44. What gets through at Balanced is mostly
 borderline: clips behind a vague caption that might be a fan's, generic-sounding replies, and
 brand accounts replying to a viral post with a meme. News accounts are the hardest real posts
-to keep: of the 6 Balanced still hides there, most have pictures the model takes for AI
-images (a gallery of Bond actors with one it hasn't heard of, odd gaming or medical news),
-and the rest are dramatic BREAKING headlines.
+to keep: the 4 Balanced still hides there all have pictures the model takes for AI images (a
+gallery of Bond actors with one it hasn't heard of, a film poster, odd medical news).
 
 The notes are what the last two real sets measure. With the notes left out of the input,
-Balanced catches 8 of those 13 noted posts instead of all 13, and 5 of the 41 posts quoting
-them instead of 38. Both sets are small and were labeled in one pass, and 36 of the 94
+Balanced catches 8 of those 13 noted posts instead of all 13, and at most 5 of the 41 posts
+quoting them instead of 36. Both sets are small and were labeled in one pass, and 36 of the 94
 quoting posts were too short or ambiguous to label at all.
 
 Things learned the hard way, before changing the wording:
@@ -182,6 +181,12 @@ Things learned the hard way, before changing the wording:
   switched off, both rules hide the same posts). Across the current sets, that catches 382 of
   634 junk posts instead of 351, for 26 posts hidden that the reader wanted to see instead of 19
   (clickbait alone: 8 instead of 4).
+- A post can reach the threshold with no kind standing out: dramatic finance and gaming
+  headlines got 20–30% each of clickbait, grift and AI slop. Hiding only when the likeliest kind
+  has at least 30% left alone 4 of the 15 real posts Balanced hid across every set (12 of 36 at
+  Strict), and missed 2 more junk posts (5 at Strict), mostly posts quoting a noted fake. On the
+  held-out sets it hid 1 fewer real post at Balanced and 3 fewer at Strict, where it caught 1
+  less junk post.
 - Telling the model which image is a video's first frame hid 6 more real video posts at
   Balanced, and caught no more junk.
 - The rule for a post quoting a noted post works in the input, right after the note. Moved

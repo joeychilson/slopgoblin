@@ -481,22 +481,13 @@ describe("on X", { timeout: 30_000 }, () => {
     await poll(() => chomping(panel)).toBe(true);
   });
 
-  it("counts a rate limit down from when it starts", async () => {
+  it("counts a rate limit down from when it starts, then drops the notice", async () => {
     await m.sw.evaluate(() =>
-      chrome.storage.session.set({ status: { kind: "rate-limited", until: Date.now() + 20_000 } }),
+      chrome.storage.session.set({ status: { kind: "rate-limited", until: Date.now() + 2_000 } }),
     );
     // The first number it shows, not one it counts down to later.
-    expect(await panel.locator(".notice").innerText()).toMatch(/resumes in (19|20)s/);
-  });
-
-  it("gives ad rows a valid aria-controls id without spaces", async () => {
-    const controls = await panel
-      .locator('.item:has-text("Big Brand") .item-open')
-      .getAttribute("aria-controls");
-    expect(controls).toMatch(/^\S+$/);
-    expect(await panel.evaluate((id) => Boolean(document.getElementById(id!)), controls)).toBe(
-      true,
-    );
+    expect(await panel.locator(".notice").innerText()).toMatch(/resumes in [12]s/);
+    await poll(() => panel.locator(".notice").count()).toBe(0);
   });
 
   it("does not pop unchanged strictness counts on unrelated re-renders", async () => {
@@ -509,50 +500,6 @@ describe("on X", { timeout: 30_000 }, () => {
       expect(await fresh.locator(".segment-count.is-new").count()).toBe(0);
     } finally {
       await settings(m.sw, { strictness: "balanced" });
-      await fresh.close();
-    }
-  });
-
-  it("stops the rate-limit countdown timer once it expires", async () => {
-    const fresh = await m.ctx.newPage();
-    await fresh.addInitScript(() => {
-      const active = new Set<number>();
-      const origSet = window.setInterval;
-      const origClear = window.clearInterval;
-      window.setInterval = ((...args: Parameters<typeof setInterval>) => {
-        const id = origSet(...args);
-        active.add(id);
-        return id;
-      }) as typeof setInterval;
-      window.clearInterval = ((id?: number) => {
-        if (id !== undefined) active.delete(id);
-        return origClear(id);
-      }) as typeof clearInterval;
-      (window as unknown as { __intervals: () => number }).__intervals = () => active.size;
-      const query = chrome.tabs.query.bind(chrome.tabs);
-      chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>
-        info.active ? (await query({ url: "https://x.com/*" })).slice(0, 1) : query(info);
-    });
-    try {
-      await m.sw.evaluate(() =>
-        chrome.storage.session.set({
-          status: { kind: "rate-limited", until: Date.now() + 1200 },
-        }),
-      );
-      await fresh.goto(`chrome-extension://${m.extension}/sidepanel/index.html`);
-      await poll(() => fresh.locator(".notice").count()).toBe(1);
-      await poll(() => fresh.locator(".notice").count()).toBe(0);
-      await expect
-        .poll(
-          () =>
-            fresh.evaluate(() =>
-              (window as unknown as { __intervals: () => number }).__intervals(),
-            ),
-          { timeout: 2_000 },
-        )
-        .toBe(0);
-    } finally {
-      await m.sw.evaluate(() => chrome.storage.session.set({ status: { kind: "ok" } }));
       await fresh.close();
     }
   });

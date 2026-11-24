@@ -4,7 +4,7 @@ import { USD_PER_MILLION_TOKENS } from "../core/decisions.ts";
 import { GOBLIN_GLYPH } from "../core/glyphs.ts";
 import { updateSettings, type Settings as SettingsData } from "../core/settings.ts";
 import { store, type Usage } from "../core/storage.ts";
-import { CATEGORIES, type CategoryId } from "../core/taxonomy.ts";
+import { CATEGORIES } from "../core/taxonomy.ts";
 import { ICONS, Icon, Segments, Switch } from "./controls.tsx";
 import { useUsage } from "./hooks.ts";
 
@@ -24,12 +24,7 @@ const HIDE_MODES: Record<HideMode, { label: string; hint: string }> = {
 export function Settings(props: { settings: SettingsData; apiKey: string; hidden: HiddenPost[] }) {
   const { settings, apiKey, hidden } = props;
   const usage = useUsage();
-  const counts = useMemo(() => {
-    const map = new Map<CategoryId, number>();
-    for (const { verdict } of hidden)
-      map.set(verdict.category, (map.get(verdict.category) ?? 0) + 1);
-    return map;
-  }, [hidden]);
+  const byKind = useMemo(() => Map.groupBy(hidden, ({ verdict }) => verdict.category), [hidden]);
 
   return (
     <div class="settings">
@@ -40,7 +35,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
         <ul class="rows">
           {CATEGORIES.map((category) => {
             const on = settings.categories[category.id];
-            const count = counts.get(category.id) ?? 0;
+            const count = byKind.get(category.id)?.length;
             const id = `category-${category.id}`;
             return (
               <li key={category.id}>

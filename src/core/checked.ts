@@ -1,6 +1,6 @@
 import { judge, type Judged, type Verdict } from "./policy.ts";
 import type { Settings } from "./settings.ts";
-import { STRICTNESS, type Strictness } from "./taxonomy.ts";
+import type { Strictness } from "./taxonomy.ts";
 
 /** A post checked in this Chrome session, kept in `chrome.storage.session`. */
 export interface CheckedPost extends Judged {
@@ -20,26 +20,14 @@ export interface HiddenPost {
   verdict: Verdict;
 }
 
-export function hiddenAmong(posts: CheckedPost[], settings: Settings): HiddenPost[] {
-  const hidden: HiddenPost[] = [];
-  for (const post of posts) {
+export const hiddenAmong = (posts: CheckedPost[], settings: Settings): HiddenPost[] =>
+  posts.flatMap((post) => {
     const verdict = judge(post, settings);
-    if (verdict) hidden.push({ post, verdict });
-  }
-  return hidden;
-}
+    return verdict ? [{ post, verdict }] : [];
+  });
 
-/** Counts how many posts each strictness would hide in one pass. */
+/** How many posts each strictness would hide. */
 export function hiddenAtEach(posts: CheckedPost[], settings: Settings): Record<Strictness, number> {
-  const counts: Record<Strictness, number> = { relaxed: 0, balanced: 0, strict: 0 };
-  const configs = STRICTNESS.map((strictness) => ({
-    strictness,
-    settings: { ...settings, strictness },
-  }));
-  for (const post of posts) {
-    for (const config of configs) {
-      if (judge(post, config.settings)) counts[config.strictness]++;
-    }
-  }
-  return counts;
+  const count = (strictness: Strictness) => hiddenAmong(posts, { ...settings, strictness }).length;
+  return { relaxed: count("relaxed"), balanced: count("balanced"), strict: count("strict") };
 }

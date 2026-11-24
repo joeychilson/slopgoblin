@@ -24,12 +24,19 @@ export const FINE =
 /** Minimum probability of junk to hide a post. Tuned with `vp run eval`. */
 export const THRESHOLD: Record<Strictness, number> = { relaxed: 0.75, balanced: 0.6, strict: 0.5 };
 
+/**
+ * Minimum probability of the likeliest kind, at any strictness. When the model spreads a post's
+ * junk chance thin over several kinds, it couldn't place the post, and those are mostly real
+ * posts that look dramatic: finance headlines, gaming news. Tuned with `vp run eval`.
+ */
+export const LIKELIEST = 0.3;
+
 export const STRICTNESS = Object.keys(THRESHOLD) as Strictness[];
 
 /**
  * What each strictness costs, in a few words, as `vp run eval` measures it on timelines and
  * reply threads: Relaxed catches about 3 in 5 junk posts and hides 1 real post in 800,
- * Balanced about 3 in 4 and 1 in 200, Strict over 4 in 5 and 1 in 70. Re-measure after moving a
+ * Balanced about 3 in 4 and 1 in 300, Strict over 4 in 5 and 1 in 90. Re-measure after moving a
  * threshold.
  */
 export const TRADEOFF: Record<Strictness, string> = {

@@ -46,6 +46,11 @@ describe("judge", () => {
     });
   });
 
+  it("leaves a post alone when its junk chance is spread thin over several kinds", () => {
+    const spread = post({ scores: { clickbait: 0.25, grift: 0.2, ai_slop: 0.15 } });
+    expect(judge(spread, settings({ strictness: "strict" }))).toBeNull();
+  });
+
   it("counts a post Google refused to read as NSFW", () => {
     expect(judge(post({ scores: REFUSED }), settings())).toEqual({ category: "nsfw", score: 1 });
     expect(judge(post({ scores: REFUSED }), settings({ categories: only("ragebait") }))).toBeNull();

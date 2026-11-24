@@ -77,8 +77,18 @@ const cacheKey = (row: Row) => {
 };
 
 const all = sets.flatMap((set) => set.rows);
+/** The sets that look like everyday reading: the timelines and the replies. The README quotes these. */
+const EVERYDAY = ["feed", "feed2", "holdout", "replies", "threads"];
+const everyday = sets.filter((set) => EVERYDAY.includes(set.name)).flatMap((set) => set.rows);
 const missing = all.filter((row) => !(cacheKey(row) in cache));
 if (missing.length) console.log(`Asking about ${missing.length} of ${all.length} posts…`);
+
+// Saved every few seconds as answers arrive, so an interrupted run doesn't pay for them again.
+let savedAt = Date.now();
+const save = () => {
+  writeFileSync(cachePath, JSON.stringify(cache));
+  savedAt = Date.now();
+};
 
 await runPool(missing, 8, async (row) => {
   let withImages = true;
@@ -105,11 +115,11 @@ await runPool(missing, 8, async (row) => {
       console.warn(`${row.id}: blocked by the safety filter`);
       cache[cacheKey(row)] = { scores: REFUSED, tokens: 0 };
     }
-    // Saved as answers arrive, so an interrupted run doesn't pay for them again.
-    writeFileSync(cachePath, JSON.stringify(cache));
+    if (Date.now() - savedAt > 5000) save();
     return;
   }
 });
+if (missing.length) save();
 
 const answerFor = (row: Row) => cache[cacheKey(row)]!;
 
@@ -139,8 +149,11 @@ console.log(`\n${"".padEnd(26)}${levelHeads}`);
 console.log(
   `${"set".padEnd(14)}${cell("clean", 6)}${cell("junk", 6)}${STRICTNESS.map(() => "    wrong  caught").join("")}`,
 );
-const total = { name: "all", rows: all };
-for (const { name, rows } of sets.length > 1 ? [...sets, total] : sets) {
+const totals = [
+  ...(everyday.length ? [{ name: "everyday", rows: everyday }] : []),
+  { name: "all", rows: all },
+];
+for (const { name, rows } of sets.length > 1 ? [...sets, ...totals] : sets) {
   const cells = STRICTNESS.map(
     (s) =>
       `${cell(hidden(clean(rows), settingsAt(s)), 9)}${cell(hidden(junk(rows), settingsAt(s)), 8)}`,

@@ -1,7 +1,7 @@
 import type { Scores } from "./decisions.ts";
 import type { Label } from "./post.ts";
 import type { Settings } from "./settings.ts";
-import { ASKED, CATEGORIES, CATEGORY, THRESHOLD, type CategoryId } from "./taxonomy.ts";
+import { ASKED, CATEGORIES, CATEGORY, LIKELIEST, THRESHOLD, type CategoryId } from "./taxonomy.ts";
 
 export interface Verdict {
   /** The likeliest of the categories switched on, or the site's own label. */
@@ -47,8 +47,9 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
   const known = settled(post, settings);
   if (known) return known === "shown" ? null : known;
 
-  // A post that's several kinds has its chance split between them. Hide it when it's junk and
-  // either its likeliest kind is switched on, or at least half of its junk score is kinds switched on.
+  // A post that's several kinds has its chance split between them. Hide it when it's junk, one
+  // kind stands out, and either the likeliest kind is switched on or at least half of its junk
+  // score is kinds switched on.
   let score = 0;
   let on = 0;
   let topAll: { id: CategoryId; p: number } | undefined;
@@ -63,8 +64,10 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
     if (!topOn || p > topOn.p) topOn = { id, p };
   }
   return topOn &&
+    topAll &&
     score >= THRESHOLD[settings.strictness] &&
-    (on >= score / 2 || (topAll !== undefined && topOn.p >= topAll.p))
+    topAll.p >= LIKELIEST &&
+    (on >= score / 2 || topOn.p >= topAll.p)
     ? { category: topOn.id, score }
     : null;
 }

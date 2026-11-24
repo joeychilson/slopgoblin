@@ -26,7 +26,7 @@ Slop Goblin hides the junk from your X feed: AI slop, ragebait, clickbait, engag
 Each post you scroll past is judged by Google's Gemini Decisions API, with your own API key. A hidden post folds into a slim bar that says why. Click it to see the post, let it through, or always show its author.
 
 • Switch off any kind of junk you don't mind.
-• Three strictness levels. Balanced catches most junk and hides about 1 real post in 200 by mistake.
+• Three strictness levels. Balanced catches most junk and hides about 1 real post in 300 by mistake.
 • Posts X itself labels as a paid partnership or "Made with AI" are hidden without asking Google.
 • Your own posts, people you follow and accounts you mark "Always show" are left alone, and Google is never asked about them.
 • The side panel lists what's been hidden lately, from every tab, and how many posts each strictness would hide.

@@ -22,7 +22,7 @@ to see the post.
 - Hides seven kinds of junk, ads, and posts X labels "Made with AI". Switch
   off any you don't mind. What X labels itself is hidden without asking Google.
 - Three strictness levels. On an everyday feed, Balanced catches over 3 in 4
-  junk posts and hides about 1 real post in 200 by mistake.
+  junk posts and hides about 1 real post in 300 by mistake.
 - Leaves your own posts, people you follow and accounts you mark "Always
   show" alone, and never asks Google about them.
 - Lists what's been hidden lately in a side panel, from every tab, where you

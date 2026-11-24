@@ -15,11 +15,11 @@ import { renderCell, type BarAction, type View } from "./bar.ts";
 
 const RETRY_MS = 20_000;
 /** Short settle skips rapid scroll-bys without delaying text posts. */
-const FAST_SETTLE_MS = 180;
-/** Max settle while waiting for X to hydrate a post's image or video poster. */
+const FAST_SETTLE_MS = 300;
+/** Max settle while waiting for X to hydrate an image or video poster. */
 const MEDIA_SETTLE_MS = 1000;
-/** Lookahead margin so upcoming posts are classified before scrolling into view. */
-const LOOKAHEAD = "1000px 0px";
+/** Lookahead below the viewport only; posts above the fold won't reshape anyway. */
+const LOOKAHEAD = "0px 0px 1000px 0px";
 const ID_ATTR = "data-sg-post";
 /** Evict unmounted posts past this count so multi-day tabs stay bounded. */
 const KEEP = 2000;
@@ -48,9 +48,8 @@ class Feed {
   private readonly labels = new Map<string, Label[]>();
   private readonly seen = new WeakSet<Element>();
   private readonly unreadable = new WeakSet<Element>();
-  private readonly near = new WeakSet<Element>();
+  private readonly nearCells = new WeakSet<Element>();
   private readonly unsent = new Set<Tracked>();
-  /** Resolvers for posts waiting on media hydration, woken early when media lands. */
   private readonly mediaWaiters = new Map<string, () => void>();
   private readableCount = 0;
   private unreadableCount = 0;
@@ -82,8 +81,8 @@ class Feed {
   }
 
   private onMutations(records: MutationRecord[]) {
-    let addedNodes = false;
-    const touchedPosts = new Set<Element>();
+    let added = false;
+    const touched = new Set<Element>();
 
     for (const record of records) {
       let relevant = false;
@@ -95,26 +94,26 @@ class Feed {
         break;
       }
       if (!relevant) continue;
-      addedNodes = true;
+      added = true;
       const host = (record.target as Element).closest?.(`[${ID_ATTR}]`);
-      if (host) touchedPosts.add(host);
+      if (host) touched.add(host);
     }
 
-    if (!addedNodes) return;
-
-    for (const el of touchedPosts) this.refreshElement(el);
+    if (!added) return;
+    for (const el of touched) this.refreshElement(el);
     this.scan();
   }
 
   private onIntersect(entries: IntersectionObserverEntry[]) {
     for (const entry of entries) {
-      const el = entry.target;
+      const cell = entry.target;
       if (!entry.isIntersecting) {
-        this.near.delete(el);
+        this.nearCells.delete(cell);
         continue;
       }
-      this.near.add(el);
-      const t = this.trackedOf(el);
+      this.nearCells.add(cell);
+      const postEl = cell.querySelector(`[${ID_ATTR}]`);
+      const t = postEl && this.trackedOf(postEl);
       if (t && this.wantsRequest(t)) void this.request(t);
     }
   }
@@ -125,7 +124,7 @@ class Feed {
       if (this.seen.has(el)) continue;
       const post = this.site.readPost(el);
       if (!post) {
-        // Ignore empty hydration skeletons; only count elements with text that still fail to parse.
+        // Ignore empty hydration skeletons; only count non-empty elements that still fail to parse.
         if (!this.unreadable.has(el) && el.textContent?.trim()) {
           this.unreadable.add(el);
           this.unreadableCount++;
@@ -138,7 +137,8 @@ class Feed {
       this.readableCount++;
       found = true;
       if (post.author.handle.toLowerCase() === this.site.viewer()?.toLowerCase()) continue;
-      if (this.site.isFocused(el) || !this.site.container(el)) continue;
+      const cell = this.site.container(el);
+      if (this.site.isFocused(el) || !cell) continue;
 
       el.setAttribute(ID_ATTR, post.id);
       const t = this.posts.get(post.id) ?? this.track(post);
@@ -147,14 +147,14 @@ class Feed {
         t.post = post;
         if (t.status === "done") t.status = "idle";
       }
-      this.intersection.observe(el);
+      // Observe the cell wrapper rather than `<article>`, which goes `display: none` when collapsed.
+      this.intersection.observe(cell);
       this.show(t, el, true);
       if (this.wantsRequest(t)) void this.request(t, !this.isNear(el));
     }
     if (found) this.changed();
   }
 
-  /** Picks up late-hydrating avatars, media, or community notes inside an already-tracked post. */
   private refreshElement(el: Element) {
     const t = this.trackedOf(el);
     if (!t) return;
@@ -193,19 +193,8 @@ class Feed {
       if (!this.elementsOf(old).length) this.posts.delete(id);
     }
     this.posts.set(post.id, t);
-    this.rejudge(t);
+    t.verdict = judge(this.judged(t), this.settings);
     return t;
-  }
-
-  private checked(t: Tracked) {
-    t.status = "done";
-    this.rejudge(t);
-    this.listed(t);
-  }
-
-  private listed(t: Tracked) {
-    t.checkedAt ??= Date.now();
-    this.touched(t);
   }
 
   private onSettings(next: Settings) {
@@ -214,12 +203,12 @@ class Feed {
       if (t.letThrough === "trust" && !this.settings.trusted.includes(handleOf(t))) {
         t.letThrough = undefined;
       }
-      this.rejudge(t);
+      t.verdict = judge(this.judged(t), this.settings);
     }
     for (const el of document.querySelectorAll(`[${ID_ATTR}]`)) {
       const t = this.trackedOf(el);
       if (!t) continue;
-      // Show first so previously display:none cells have a real rect for `isNear`.
+      // Show first so previously `display: none` cells have a real rect for `isNear`.
       this.show(t, el, true);
       if (this.wantsRequest(t) && this.isNear(el)) void this.request(t);
     }
@@ -234,7 +223,7 @@ class Feed {
     for (const t of this.posts.values()) {
       if (!handles.has(handleOf(t)) && !ids.has(t.post.id)) continue;
       this.update(t, false);
-      if (this.wantsRequest(t) && this.nearElementOf(t)) void this.request(t);
+      if (this.wantsRequest(t) && this.hasNearElement(t)) void this.request(t);
       this.touched(t);
     }
   }
@@ -254,11 +243,11 @@ class Feed {
   }
 
   private wantsRequest(t: Tracked) {
-    return !this.stopped && (t.status === "idle" || t.status === "failed") && this.worthAsking(t);
-  }
-
-  private worthAsking(t: Tracked) {
-    return needsScores({ ...this.judged(t), isReply: isReply(t.post) }, this.settings);
+    return (
+      !this.stopped &&
+      (t.status === "idle" || t.status === "failed") &&
+      needsScores({ ...this.judged(t), isReply: isReply(t.post) }, this.settings)
+    );
   }
 
   private async request(t: Tracked, cacheOnly = false) {
@@ -268,9 +257,11 @@ class Feed {
     let asked = t.post;
     let res = await this.classify(t, true);
     if ("uncached" in res) {
-      if (cacheOnly && !this.nearElementOf(t)) return this.setIdle(t);
+      if (cacheOnly && !this.hasNearElement(t)) return this.setIdle(t);
       const el = await this.settle(t);
-      if (!el || !this.worthAsking(t)) return this.setIdle(t);
+      if (!el || !needsScores({ ...this.judged(t), isReply: isReply(t.post) }, this.settings)) {
+        return this.setIdle(t);
+      }
       const reread = this.site.readPost(el);
       if (reread && !addsContext(t.post, reread)) t.post = reread;
       // Don't send an empty placeholder shell before its text or media has appeared.
@@ -282,18 +273,21 @@ class Feed {
     if ("scores" in res) {
       t.scores = res.scores;
       t.notSlop ||= res.notSlop;
-      this.checked(t);
+      t.status = "done";
+      t.verdict = judge(this.judged(t), this.settings);
+      t.checkedAt ??= Date.now();
+      this.touched(t);
       for (const el of this.elementsOf(t)) this.show(t, el, false);
       if (addsContext(t.post, asked)) {
         t.status = "idle";
-        if (this.wantsRequest(t) && this.nearElementOf(t)) void this.request(t);
+        if (this.wantsRequest(t) && this.hasNearElement(t)) void this.request(t);
       }
     } else if ("needsKey" in res) {
       this.setIdle(t);
     } else {
       t.status = "failed";
       setTimeout(() => {
-        if (this.wantsRequest(t) && this.nearElementOf(t)) void this.request(t);
+        if (this.wantsRequest(t) && this.hasNearElement(t)) void this.request(t);
       }, RETRY_MS);
       this.changed();
     }
@@ -308,10 +302,6 @@ class Feed {
     return this.posts.get(el.getAttribute(ID_ATTR) ?? "");
   }
 
-  /**
-   * Gives a mounted post a brief beat to finish rendering (longer only while a media slot is
-   * still empty, waking early as soon as its image or video poster loads).
-   */
   private async settle(t: Tracked): Promise<Element | undefined> {
     const initial = this.elementsOf(t)[0];
     if (!initial) return undefined;
@@ -326,8 +316,7 @@ class Feed {
       if (pendingMedia) this.mediaWaiters.set(t.post.id, done);
     });
     const el = this.elementsOf(t)[0];
-    if (!el || !this.isNear(el)) return undefined;
-    return el;
+    return el && this.isNear(el) ? el : undefined;
   }
 
   private async classify(
@@ -336,16 +325,15 @@ class Feed {
     priority: Priority = 0,
   ): Promise<ClassifyResponse> {
     const post: Post = { ...t.post, labels: this.labelsOf(t) };
-    const res = await this.send<ClassifyResponse>({ type: "classify", post, cachedOnly, priority });
-    return res ?? { unavailable: true };
-  }
-
-  private rejudge(t: Tracked) {
-    t.verdict = judge(this.judged(t), this.settings);
+    return (
+      (await this.send<ClassifyResponse>({ type: "classify", post, cachedOnly, priority })) ?? {
+        unavailable: true,
+      }
+    );
   }
 
   private update(t: Tracked, fresh: boolean) {
-    this.rejudge(t);
+    t.verdict = judge(this.judged(t), this.settings);
     for (const el of this.elementsOf(t)) this.show(t, el, fresh);
   }
 
@@ -353,21 +341,25 @@ class Feed {
     return document.querySelectorAll(`[${ID_ATTR}="${CSS.escape(t.post.id)}"]`);
   }
 
-  private nearElementOf(t: Tracked) {
-    return [...this.elementsOf(t)].find((el) => this.isNear(el));
+  private hasNearElement(t: Tracked) {
+    return [...this.elementsOf(t)].some((el) => this.isNear(el));
   }
 
   private isNear(el: Element) {
-    if (this.near.has(el)) return true;
-    const box = (this.site.container(el) ?? el).getBoundingClientRect();
-    return box.height > 0 && box.bottom > 0 && box.top < innerHeight + 1000;
+    const box = this.site.container(el) ?? el;
+    if (this.nearCells.has(box)) return true;
+    const rect = box.getBoundingClientRect();
+    return rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight + 1000;
   }
 
   /** `fresh` is false when a change lands on a post already on screen. */
   private show(t: Tracked, el: Element, fresh: boolean) {
     const cell = this.site.container(el);
     if (!cell || this.stopped) return;
-    if (t.verdict?.labeled && t.checkedAt === undefined) this.listed(t);
+    if (t.verdict?.labeled && t.checkedAt === undefined) {
+      t.checkedAt = Date.now();
+      this.touched(t);
+    }
     const view = viewFor(t, this.settings);
     // Avoid shifting the page under the reader for posts already scrolled above the fold.
     const reshapes = view.mode !== (cell.dataset.sg ?? "shown");
@@ -396,7 +388,8 @@ class Feed {
         break;
       case "not-slop":
         t.letThrough = "not-slop";
-        this.setNotSlop(t, true, true);
+        t.notSlop = true;
+        this.update(t, true);
         void this.send({ type: "not-slop", id: t.post.id, notSlop: true });
         break;
       case "trust":
@@ -408,17 +401,13 @@ class Feed {
         if (t.letThrough === "trust") {
           void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handleOf(t)) }));
         } else {
-          this.setNotSlop(t, false, true);
+          t.notSlop = false;
+          this.update(t, true);
           void this.send({ type: "not-slop", id: t.post.id, notSlop: false });
         }
         t.letThrough = undefined;
         break;
     }
-  }
-
-  private setNotSlop(t: Tracked, notSlop: boolean, fresh: boolean) {
-    t.notSlop = notSlop;
-    this.update(t, fresh);
   }
 
   private readonly onTabMessage = (
@@ -451,7 +440,8 @@ class Feed {
         if (!t || t.notSlop === message.notSlop) break;
         if (message.notSlop && t.verdict) t.letThrough = "not-slop";
         if (!message.notSlop && t.letThrough === "not-slop") t.letThrough = undefined;
-        this.setNotSlop(t, message.notSlop, false);
+        t.notSlop = message.notSlop;
+        this.update(t, false);
         break;
       }
     }
@@ -472,27 +462,20 @@ class Feed {
     this.changed();
   }
 
-  private checkedPost(t: Tracked): CheckedPost {
-    const { post } = t;
-    return {
-      ...this.judged(t),
-      id: post.id,
-      url: post.url,
-      name: post.author.name,
-      avatar: t.avatar,
-      text: post.text.slice(0, 600),
-      at: t.checkedAt!,
-    };
-  }
-
   private changed() {
     this.flushTimer ??= setTimeout(() => {
       this.flushTimer = undefined;
       if (this.unsent.size) {
-        void this.send({
-          type: "checked",
-          posts: [...this.unsent].map((t) => this.checkedPost(t)),
-        });
+        const posts: CheckedPost[] = [...this.unsent].map((t) => ({
+          ...this.judged(t),
+          id: t.post.id,
+          url: t.post.url,
+          name: t.post.author.name,
+          avatar: t.avatar,
+          text: t.post.text.slice(0, 600),
+          at: t.checkedAt!,
+        }));
+        void this.send({ type: "checked", posts });
         this.unsent.clear();
       }
       void this.send({ type: "tab-state", state: this.tabState() });
@@ -526,13 +509,10 @@ class Feed {
   }
 }
 
-function handleOf(t: Tracked) {
-  return t.post.author.handle.toLowerCase();
-}
+const handleOf = (t: Tracked) => t.post.author.handle.toLowerCase();
 
-function hasJudgeableContent(post: Post) {
-  return Boolean(post.text || post.images?.length || post.quote || post.link || post.readerNote);
-}
+const hasJudgeableContent = (post: Post) =>
+  Boolean(post.text || post.images?.length || post.quote || post.link || post.readerNote);
 
 function priorityOf(el: Element): Priority {
   const rect = el.getBoundingClientRect();

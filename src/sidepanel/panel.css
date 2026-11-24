@@ -72,7 +72,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
   color: inherit;
 }
@@ -641,53 +642,55 @@ code {
   text-decoration: underline;
 }
 
-.filters {
+.filter-bar {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  margin: 2px -16px 10px;
-  padding: 0 20px;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px 4px;
 }
 
-.filters::-webkit-scrollbar {
-  display: none;
-}
-
-.filter-pill {
-  flex: none;
+.filter-wrap {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border: 0;
   border-radius: 9999px;
   background: var(--well);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
+  color: var(--ink-2);
   transition:
     background 180ms,
     color 180ms;
 }
 
-.filter-pill:hover {
+.filter-wrap:hover {
   background: var(--well-strong);
-  color: var(--ink);
 }
 
-.filter-pill[aria-pressed="true"] {
+.filter-wrap.is-active {
   background: var(--fill);
   color: var(--on-fill);
 }
 
-.filter-pill span {
-  opacity: 0.68;
-  font-variant-numeric: tabular-nums;
+.filter-wrap .icon {
+  position: absolute;
+  right: 9px;
+  pointer-events: none;
+}
+
+.filter-select {
+  height: 28px;
+  padding: 0 28px 0 11px;
+  border: 0;
+  border-radius: 9999px;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  appearance: none;
+  cursor: pointer;
+}
+
+.filter-select option {
+  background: var(--sheet);
+  color: var(--ink);
 }
 
 .load-more {

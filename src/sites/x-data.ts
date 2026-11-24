@@ -49,6 +49,7 @@ export function readData() {
 
   function onLoad(this: XMLHttpRequest) {
     const url = this.responseURL;
+    if (this.status < 200 || this.status >= 300) return;
     if (!GRAPHQL.test(url) && !FRIENDSHIP.test(url)) return;
     try {
       const data: unknown =
@@ -69,17 +70,16 @@ export function readData() {
   const origFetch = window.fetch;
   if (typeof origFetch === "function") {
     window.fetch = function (input, init) {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.href : (input?.url ?? "");
       const promise = origFetch.call(this, input, init);
       if (GRAPHQL.test(url) || FRIENDSHIP.test(url)) {
-        void promise.then((res) => {
-          if (!res.ok) return;
-          void res
-            .clone()
-            .json()
-            .then((data) => ingest(url, data))
-            .catch(() => {});
-        });
+        void promise
+          .then((res) => (res.ok ? res.clone().json() : undefined))
+          .then((data) => {
+            if (data !== undefined) ingest(url, data);
+          })
+          .catch(() => {});
       }
       return promise;
     };

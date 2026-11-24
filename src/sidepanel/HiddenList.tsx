@@ -22,12 +22,11 @@ type UndoAction =
 export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: boolean }) {
   const { tabId, hidden } = props;
   const [open, setOpen] = useState<string | null>(null);
-  const [filter, setFilter] = useState<CategoryId | null>(null);
+  const [filter, setFilter] = useState<CategoryId | "">("");
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [undo, setUndo] = useState<UndoAction | null>(null);
 
   const firstOrder = useRef<Map<string, number> | null>(null);
-  const filtersRef = useRef<HTMLDivElement>(null);
   firstOrder.current ??= new Map(hidden.map(({ post }, i) => [post.id, Math.min(i, 10)]));
 
   const categoryCounts = useMemo(() => {
@@ -39,13 +38,10 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
   }, [hidden]);
 
   useEffect(() => {
-    if (filter && !categoryCounts.some(([id]) => id === filter)) {
-      setFilter(null);
-      filtersRef.current?.scrollTo({ left: 0 });
-    }
+    if (filter && !categoryCounts.some(([id]) => id === filter)) setFilter("");
   }, [filter, categoryCounts]);
 
-  const activeFilter = filter && categoryCounts.some(([id]) => id === filter) ? filter : null;
+  const activeFilter = filter && categoryCounts.some(([id]) => id === filter) ? filter : "";
   const filtered = useMemo(
     () =>
       activeFilter ? hidden.filter(({ verdict }) => verdict.category === activeFilter) : hidden,
@@ -99,32 +95,38 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
       )}
 
       {categoryCounts.length >= 2 && (
-        <div ref={filtersRef} class="filters" role="group" aria-label="Filter by category">
-          <button
-            type="button"
-            class="filter-pill"
-            aria-pressed={activeFilter === null}
-            onClick={() => {
-              setFilter(null);
-              setLimit(PAGE_SIZE);
-            }}
-          >
-            All <span>{hidden.length}</span>
-          </button>
-          {categoryCounts.map(([id, count]) => (
-            <button
-              key={id}
-              type="button"
-              class="filter-pill"
-              aria-pressed={activeFilter === id}
-              onClick={() => {
-                setFilter(activeFilter === id ? null : id);
+        <div class="filter-bar">
+          <span class={activeFilter ? "filter-wrap is-active" : "filter-wrap"}>
+            <select
+              class="filter-select"
+              aria-label="Filter hidden posts by category"
+              value={activeFilter}
+              onChange={(event) => {
+                setFilter(event.currentTarget.value as CategoryId | "");
                 setLimit(PAGE_SIZE);
               }}
             >
-              {CATEGORY[id].label} <span>{count}</span>
+              <option value="">All categories ({hidden.length})</option>
+              {categoryCounts.map(([id, count]) => (
+                <option key={id} value={id}>
+                  {CATEGORY[id].label} ({count})
+                </option>
+              ))}
+            </select>
+            <Icon d={ICONS.chevron} size={14} weight={2.2} />
+          </span>
+          {activeFilter && (
+            <button
+              type="button"
+              class="undo-link"
+              onClick={() => {
+                setFilter("");
+                setLimit(PAGE_SIZE);
+              }}
+            >
+              Show all
             </button>
-          ))}
+          )}
         </div>
       )}
 

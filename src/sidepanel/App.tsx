@@ -94,7 +94,7 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
             <>
               <Notice status={status} broken={tab?.state?.broken} enabled={settings.enabled} />
               <Summary tab={tab} settings={settings} checked={checked} />
-              {hidden.length > 0 && (
+              {settings.enabled && (
                 <HiddenList
                   hidden={hidden}
                   tabId={tab?.state ? tab.id : undefined}

@@ -40,19 +40,20 @@ content script (x.com)            service worker                    Gemini
 - **One multiple-choice question per post.** The model is asked which label fits best: one
   of the junk categories, or `fine`. It answers with a probability for every option. A post
   is hidden when its chance of being junk is more than your strictness asks for (75%, 60% or
-  50%), and at least half of that chance is kinds you have switched on; the bar names the
-  likeliest of those. Asking once, with `fine` spelled out as an option, is what keeps real
-  posts in: separate yes/no questions per category each found something to object to in
-  ordinary fan posts and replies. The kinds overlap, so a post that's several kinds has its
-  chance split between them. That's why the switches go by the share: switching a kind off
-  shows the posts that are mostly that kind.
+  50%), and either its likeliest kind or at least half of that chance is kinds you have
+  switched on; the bar names the likeliest of those. Asking once, with `fine` spelled out as
+  an option, is what keeps real posts in: separate yes/no questions per category each found
+  something to object to in ordinary fan posts and replies. The kinds overlap, so a post
+  that's several kinds has its chance split between them. That's why the switches go by the
+  winning kind or share: switching a kind off still shows the posts that are mostly that
+  kind.
 - **Community notes count as evidence.** When X shows a note under a post, or under the post
   it quotes, the note goes to the model too, along with whether other readers have rated it
   yet. A post that passes along something its note calls fake or bait is judged as junk of the
   same kind, unless it corrects it. A note that only adds context changes nothing. A note that
   turns up later changes the cache key, so the post is asked about again.
-- **About 10¢ per 1,000 posts.** A text post is about 770 input tokens and each image adds 280
-  (up to two are sent, at low resolution), which averages 970 on a real feed. Output is free.
+- **About 10¢ per 1,000 posts.** A text post is about 825 input tokens and each image adds 280
+  (up to two are sent, at low resolution), which averages 1,030 on a real feed. Output is free.
   The free tier's 50,000 tokens a minute covers about 50 posts a minute; when it runs out, the
   posts on screen are checked first once it's back.
 - **Google is only asked about posts that could be hidden.** Not your own posts, not posts
@@ -125,19 +126,19 @@ posts hidden by mistake / junk caught, counting only posts with a firm label:
 
 | posts from                      | real | junk | Relaxed | Balanced | Strict  |
 | ------------------------------- | ---- | ---- | ------- | -------- | ------- |
-| a timeline                      | 207  | 26   | 0 / 21  | 2 / 24   | 2 / 25  |
-| a later timeline, held out      | 100  | 15   | 0 / 9   | 1 / 12   | 2 / 14  |
-| reply threads                   | 221  | 12   | 0 / 6   | 0 / 9    | 1 / 10  |
-| spam-prone searches             | 16   | 69   | 0 / 63  | 1 / 69   | 2 / 69  |
-| posts with a note               | 4    | 13   | 0 / 10  | 0 / 13   | 1 / 13  |
-| posts quoting those             | 17   | 41   | 0 / 13  | 0 / 23   | 0 / 30  |
-| a tech-heavy timeline           | 153  | 7    | 1 / 3   | 2 / 4    | 5 / 5   |
-| news accounts and news searches | 214  | 16   | 2 / 14  | 7 / 16   | 17 / 16 |
-| AI searches                     | 33   | 34   | 0 / 34  | 0 / 34   | 1 / 34  |
-| opinion and hype searches       | 48   | 3    | 0 / 3   | 0 / 3    | 1 / 3   |
-| replies under viral news        | 163  | 10   | 0 / 2   | 0 / 3    | 2 / 3   |
-| the last five, 3 in 10 held out | 249  | 31   | 1 / 24  | 3 / 24   | 7 / 24  |
-| written to order                | 171  | 151  | 0 / 134 | 1 / 141  | 1 / 146 |
+| a timeline                      | 207  | 26   | 0 / 22  | 0 / 25   | 3 / 26  |
+| a later timeline, held out      | 100  | 15   | 0 / 8   | 0 / 11   | 1 / 13  |
+| reply threads                   | 221  | 12   | 0 / 7   | 1 / 10   | 2 / 11  |
+| spam-prone searches             | 16   | 69   | 0 / 67  | 1 / 69   | 2 / 69  |
+| posts with a note               | 4    | 13   | 0 / 11  | 0 / 13   | 0 / 13  |
+| posts quoting those             | 17   | 41   | 0 / 30  | 0 / 38   | 0 / 39  |
+| a tech-heavy timeline           | 153  | 7    | 1 / 5   | 2 / 6    | 5 / 6   |
+| news accounts and news searches | 214  | 16   | 1 / 15  | 6 / 16   | 13 / 16 |
+| AI searches                     | 33   | 34   | 0 / 34  | 0 / 34   | 0 / 34  |
+| opinion and hype searches       | 48   | 3    | 0 / 3   | 0 / 3    | 0 / 3   |
+| replies under viral news        | 163  | 10   | 0 / 2   | 1 / 2    | 1 / 3   |
+| the last five, 3 in 10 held out | 249  | 31   | 0 / 24  | 3 / 25   | 8 / 25  |
+| written to order                | 171  | 151  | 0 / 131 | 1 / 141  | 1 / 145 |
 
 The later timeline was collected after the wording of the time was frozen and labeled in one
 pass, so it's a sanity check rather than a benchmark; it agrees with the first. The last six
@@ -146,17 +147,17 @@ were read, were held out of the tuning. They were labeled before the model's ans
 looked at, and the posts where labels and model disagreed were checked again.
 
 On the five sets that look like everyday reading (the three timelines and both sets of
-replies), Balanced hides 5 of 844 real posts and catches 52 of 70 junk ones, Strict hides 12
-and catches 57, and Relaxed hides 1 and catches 41. What gets through at Balanced is mostly
+replies), Balanced hides 4 of 844 real posts and catches 54 of 70 junk ones, Strict hides 12
+and catches 59, and Relaxed hides 1 and catches 44. What gets through at Balanced is mostly
 borderline: clips behind a vague caption that might be a fan's, generic-sounding replies, and
 brand accounts replying to a viral post with a meme. News accounts are the hardest real posts
-to keep: of the 7 Balanced still hides there, most have pictures the model takes for AI
-images (a new film's poster, a gallery of Bond actors with one it hasn't heard of), and the
-rest are dramatic BREAKING headlines and teasers.
+to keep: of the 6 Balanced still hides there, most have pictures the model takes for AI
+images (a gallery of Bond actors with one it hasn't heard of, odd gaming or medical news),
+and the rest are dramatic BREAKING headlines.
 
 The notes are what the last two real sets measure. With the notes left out of the input,
 Balanced catches 8 of those 13 noted posts instead of all 13, and 5 of the 41 posts quoting
-them instead of 24. Both sets are small and were labeled in one pass, and 36 of the 94
+them instead of 38. Both sets are small and were labeled in one pass, and 36 of the 94
 quoting posts were too short or ambiguous to label at all.
 
 Things learned the hard way, before changing the wording:
@@ -176,6 +177,11 @@ Things learned the hard way, before changing the wording:
 - Adding up only the kinds switched on, as 0.1.1 did, let most junk through for a reader who
   kept one kind: 229 of 481 caught, against 274 by share, for 4 posts hidden that the reader
   wanted to see instead of 8. With every kind on, the two rules hide exactly the same posts.
+- Also hiding a post when its likeliest kind is switched on, even if the other kinds together
+  outweigh it, only changes things for a reader with one kind on (with every kind on, or one
+  switched off, both rules hide the same posts). Across the current sets, that catches 382 of
+  634 junk posts instead of 351, for 26 posts hidden that the reader wanted to see instead of 19
+  (clickbait alone: 8 instead of 4).
 - Telling the model which image is a video's first frame hid 6 more real video posts at
   Balanced, and caught no more junk.
 - The rule for a post quoting a noted post works in the input, right after the note. Moved

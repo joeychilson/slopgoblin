@@ -20,7 +20,7 @@ describe("judge", () => {
     expect(judge(post(), settings({ strictness: "relaxed" }))).toBeNull();
   });
 
-  it("hides a post only when at least half of it is kinds switched on", () => {
+  it("hides a post when its likeliest kind or at least half of its junk score is switched on", () => {
     expect(judge(post(), settings({ categories: only("ragebait") }))).toEqual({
       category: "ragebait",
       score: 0.7,
@@ -30,6 +30,17 @@ describe("judge", () => {
     ).toBeNull();
     const even = post({ scores: { ragebait: 0.4, clickbait: 0.4 } });
     expect(judge(even, settings({ categories: only("clickbait") }))).toEqual({
+      category: "clickbait",
+      score: 0.8,
+    });
+    const split = post({ scores: { ragebait: 0.35, clickbait: 0.25, engagement_bait: 0.2 } });
+    expect(judge(split, settings({ categories: only("ragebait") }))).toEqual({
+      category: "ragebait",
+      score: 0.8,
+    });
+    expect(judge(split, settings({ categories: only("clickbait") }))).toBeNull();
+    const tied = post({ scores: { ragebait: 0.3, clickbait: 0.3, engagement_bait: 0.2 } });
+    expect(judge(tied, settings({ categories: only("clickbait") }))).toEqual({
       category: "clickbait",
       score: 0.8,
     });

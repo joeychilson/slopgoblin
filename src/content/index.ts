@@ -8,17 +8,19 @@ import { startFeed } from "./feed.ts";
 const SITES: Record<string, SiteAdapter> = { "x.com": x };
 const site = SITES[location.hostname];
 
-const style = document.createElement("style");
-style.textContent = css;
-document.head.append(style);
+if (site) {
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.append(style);
 
-syncTheme();
-new MutationObserver(syncTheme).observe(document.body, {
-  attributes: true,
-  attributeFilter: ["style", "class"],
-});
+  syncTheme();
+  new MutationObserver(syncTheme).observe(document.body, {
+    attributes: true,
+    attributeFilter: ["style", "class"],
+  });
 
-if (site) void loadSettings().then((settings) => startFeed(site, settings));
+  void loadSettings().then((settings) => startFeed(site, settings));
+}
 
 /** Matches our in-feed UI, and the side panel, to the site's light, dim or dark background. */
 function syncTheme() {

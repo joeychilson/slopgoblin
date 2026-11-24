@@ -26,7 +26,7 @@ Slop Goblin hides the junk from your X feed: AI slop, ragebait, clickbait, engag
 Each post you scroll past is judged by Google's Gemini Decisions API, with your own API key. A hidden post folds into a slim bar that says why. Click it to see the post, let it through, or always show its author.
 
 • Switch off any kind of junk you don't mind.
-• Three strictness levels. Balanced catches most junk and hides about 1 real post in 170 by mistake.
+• Three strictness levels. Balanced catches most junk and hides about 1 real post in 200 by mistake.
 • Posts X itself labels as a paid partnership or "Made with AI" are hidden without asking Google.
 • Your own posts, people you follow and accounts you mark "Always show" are left alone, and Google is never asked about them.
 • The side panel lists what's been hidden lately, from every tab, and how many posts each strictness would hide.
@@ -97,7 +97,7 @@ Reviewers need a key and an X account, since X shows no feed signed out:
 2. Open https://x.com/home, signed in with the test account, and scroll. Junk posts fold into a bar that says why; click it to see the post.
 3. The side panel lists what was hidden. Settings (the sliders icon) switches categories and strictness.
 
-A script runs in x.com's own page (page.js) to read, from the data X loads, whether the user follows each post's author and which posts X labels as a paid partnership or "Made with AI". Posts from people they follow are never hidden or sent to Google to be judged, and labeled posts are hidden without asking Google. It wraps XMLHttpRequest to read X's API responses after X receives them, changes nothing, and passes on only handles with follow status, and labeled posts' IDs with their labels.
+A script runs in x.com's own page (page.js) to read, from the data X loads, whether the user follows each post's author and which posts X labels as a paid partnership or "Made with AI". Posts from people they follow are never hidden or sent to Google to be judged, and labeled posts are hidden without asking Google. It wraps XMLHttpRequest and fetch to read X's API responses after X receives them, changes nothing, and passes on only handles with follow status, and labeled posts' IDs with their labels.
 ```
 
 Delete the key and the X account once the review is done.

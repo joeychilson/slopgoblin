@@ -368,11 +368,111 @@ describe("on X", { timeout: 30_000 }, () => {
     }
   });
 
-  it("lets a post through from the side panel, in the tab too", async () => {
-    await panel.click('.item:has-text("Growth Guru") .item-open');
-    await panel.click('.item:has-text("Growth Guru") button:has-text("Not AI slop")');
+  it("lets a post through from the side panel, in the tab too, and undoes it in place", async () => {
+    const row = '.item:has-text("Growth Guru")';
+    await panel.click(`${row} .item-open`);
+    await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
+    await poll(() => panel.innerText(`${row}.is-settled`)).toMatch(/won't be hidden again/);
+    await panel.click(`${row} .item-undo`);
+    await shows(x, "slopper", "collapsed");
+    await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
+    // Undoing from the post's bar in X immediately restores the settling row in the panel.
+    await panel.click(`${row} .item-open`);
+    await panel.click(`${row} button:has-text("Not AI slop")`);
+    await shows(x, "slopper", "confirmed");
+    await poll(() => panel.locator(`${row}.is-settled`).count()).toBe(1);
+    await click(x, "slopper", "[data-sg-action=undo]");
+    await shows(x, "slopper", "revealed");
+    await poll(() => panel.locator(`${row}:not(.is-settled) .item-open`).count()).toBe(1);
+    await click(x, "slopper", "[data-sg-action=hide]");
+    await shows(x, "slopper", "collapsed");
+    // Let it through again: this time it folds away on its own, once the pointer is off it.
+    await panel.click(`${row} .item-open`);
+    await panel.click(`${row} button:has-text("Not AI slop")`);
+    await shows(x, "slopper", "confirmed");
+    await panel.mouse.move(0, 0);
     await poll(() => panel.innerText(".hidden")).not.toContain("Growth Guru");
+  });
+
+  it("shows one kind of hidden post, picked from the list's title", async () => {
+    await panel.click(".list-title");
+    await panel.click('.kinds .row:has-text("Ragebait")');
+    await poll(() => panel.locator(".list .item").count()).toBe(1);
+    expect(await panel.innerText(".list")).toContain("Rage Farm");
+    expect(await panel.innerText(".list-title")).toBe("Ragebait");
+    await panel.click(".list-title");
+    await panel.click('.kinds .row:has-text("All")');
+    await poll(() => panel.locator(".list .item").count()).toBeGreaterThan(1);
+    expect(await panel.innerText(".list-title")).toBe("Hidden posts");
+  });
+
+  it("re-checks a post when a lazy-loaded image arrives later", async () => {
+    const lazy: MockPost = {
+      id: "305",
+      handle: "lazyimg",
+      name: "Lazy Img",
+      text: "Look at this",
+    };
+    await append(x, cell(lazy));
+    await poll(() => m.sent.map(handleIn)).toContain("lazyimg");
+    const before = m.sent.length;
+    await x.locator(cellOf("lazyimg")).evaluate((el) => {
+      const slot = document.createElement("div");
+      slot.dataset.testid = "tweetPhoto";
+      const img = document.createElement("img");
+      img.src = "https://pbs.twimg.com/media/lazy.jpg?format=jpg&name=small";
+      slot.append(img);
+      el.querySelector('[data-testid="tweetText"]')!.after(slot);
+    });
+    await poll(() => m.sent.length).toBeGreaterThan(before);
+    expect(m.sent.at(-1)).toMatch(/Attached image/);
+  });
+
+  it("re-checks when a video poster attribute arrives and keeps reply context after parent unmounts", async () => {
+    const parent: MockPost = {
+      id: "306",
+      handle: "vidparent",
+      name: "Vid Parent",
+      text: "Original thread",
+      thread: true,
+    };
+    const reply: MockPost = {
+      id: "307",
+      handle: "vidreply",
+      name: "Vid Reply",
+      text: "Check this clip",
+      media: "video",
+    };
+    await append(x, cell(parent) + cell(reply));
+    await x.locator(cellOf("vidreply")).evaluate((el) => {
+      el.querySelector('[data-testid="videoPlayer"]')!.append(document.createElement("video"));
+    });
+    await poll(() => m.sent.map(handleIn)).toContain("vidreply");
+    const before = m.sent.length;
+    await x.locator(cellOf("vidparent")).evaluate((el) => el.remove());
+    await x.locator(cellOf("vidreply")).evaluate((el) => {
+      el.querySelector("video")!.setAttribute(
+        "poster",
+        "https://pbs.twimg.com/ext_tw_video_thumb/999/pu/img/thumb.jpg",
+      );
+    });
+    await poll(() => m.sent.length).toBeGreaterThan(before);
+    const rechecked = m.sent.findLast((text) => handleIn(text) === "vidreply");
+    expect(rechecked).toMatch(/Attached image/);
+    expect(rechecked).toMatch(/Replying to @vidparent/);
+  });
+
+  it("applies live follow and unfollow changes without reloading", async () => {
+    await m.ctx.route("https://x.com/i/api/1.1/friendships/*.json", (route) =>
+      route.fulfill({ json: { screen_name: "rager" } }),
+    );
+    await x.evaluate(() => fetch("/i/api/1.1/friendships/create.json", { method: "POST" }));
+    await shows(x, "rager", "shown");
+    await x.evaluate(() =>
+      ({ f: window.fetch }).f("/i/api/1.1/friendships/destroy.json", { method: "POST" }),
+    );
+    await shows(x, "rager", "collapsed");
   });
 
   it("chomps when a post is hidden with the side panel open", async () => {
@@ -545,6 +645,104 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
       await settings(m.sw, { trusted: ["slopper"] });
       await shows(page, "slopper", "shown", /^$/);
     } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("waits for a media slot to fill, and wakes as soon as the image arrives", async () => {
+    const photo: MockPost = {
+      id: "610",
+      handle: "photopost",
+      name: "Photo Post",
+      text: "Wait for it [ai_slop .8]",
+      media: "photo",
+    };
+    const m = await launch([photo]);
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      // Still waiting past the 300ms fast-settle window while tweetPhoto is empty.
+      await sleep(450);
+      expect(m.sent).toEqual([]);
+
+      const arrived = Date.now();
+      await page.locator(cellOf("photopost")).evaluate((el) => {
+        const img = document.createElement("img");
+        img.src = "https://pbs.twimg.com/media/hydrated.jpg?format=jpg&name=small";
+        el.querySelector('[data-testid="tweetPhoto"]')!.append(img);
+      });
+      await poll(() => m.sent.length).toBe(1);
+      expect(Date.now() - arrived).toBeLessThan(250);
+      expect(m.sent[0]).toMatch(/Attached image/);
+      await shows(page, "photopost", "collapsed", /^AI slop from Photo Post/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("judges a post whose text arrives after it first mounted empty", async () => {
+    const empty: MockPost = {
+      id: "611",
+      handle: "latetext",
+      name: "Late Text",
+      text: "",
+    };
+    const m = await launch([empty]);
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      // Empty shell is not sent to Google after settling.
+      await sleep(500);
+      expect(m.sent).toEqual([]);
+
+      await page.locator(cellOf("latetext")).evaluate((el) => {
+        el.querySelector('[data-testid="tweetText"]')!.textContent = "Outrage [ragebait .9]";
+      });
+      await shows(page, "latetext", "collapsed", /^Ragebait from Late Text/);
+      expect(m.sent).toHaveLength(1);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("promotes a queued off-screen post when it scrolls into view", async () => {
+    const active: MockPost[] = [1, 2, 3, 4].map((n) => ({
+      id: `62${n}`,
+      handle: `slot${n}`,
+      name: `Slot ${n}`,
+      text: `Busy ${n}`,
+    }));
+    const releases: Record<string, () => void> = {};
+    const m = await launch(active, async (route) => {
+      const handle = handleIn(route.request().postDataJSON().input[0].text)!;
+      if (handle.startsWith("slot")) {
+        await new Promise<void>((resolve) => (releases[handle] = resolve));
+      }
+      await route.fulfill({ json: { answers: { kind: { probabilities: { fine: 1 } } } } });
+    });
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(4);
+
+      // Queue two below-screen posts inside the 1000px lookahead, b2 after b1.
+      const b1: MockPost = { id: "625", handle: "below1", name: "Below 1", text: "First below" };
+      const b2: MockPost = { id: "626", handle: "below2", name: "Below 2", text: "Second below" };
+      await append(page, `<div style="height:1700px"></div>${cell(b1)}`);
+      await sleep(500);
+      await append(page, `<div style="height:400px"></div>${cell(b2)}`);
+      await sleep(500);
+
+      // Scroll b1 into the viewport while keeping b2 below it.
+      await page.evaluate(() => window.scrollTo(0, 600));
+      await sleep(150);
+
+      // Free one slot: b1 (now visible) must go ahead of newer off-screen b2.
+      releases.slot1!();
+      await poll(() => m.sent.length).toBe(6);
+      expect(m.sent.slice(4).map(handleIn)).toEqual(["below1", "below2"]);
+    } finally {
+      for (const release of Object.values(releases)) release();
       await m.ctx.close();
     }
   });

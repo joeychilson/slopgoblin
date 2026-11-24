@@ -12,14 +12,15 @@ const SEL = {
   showMore: '[data-testid="tweet-text-show-more-link"]',
   quoteText: '[data-testid="tweetText"], div[lang]',
   card: '[data-testid="card.wrapper"]',
-  // Community notes. X's code still calls them by their first name, Birdwatch.
+  mediaSlot:
+    '[data-testid="tweetPhoto"], [data-testid="videoPlayer"], [data-testid="videoComponent"]',
+  // Community notes (X's code still calls them Birdwatch).
   note: '[data-testid="birdwatch-pivot"]',
   unratedNote: '[data-testid="icon-birdwatch-level"]',
   permalink: 'a[href*="/status/"]:has(time)',
-  // Promoted posts sit inside one of these. X also wraps videos in it, but inside the post.
+  // Promoted posts sit inside one of these; X also wraps videos in it, but inside the post.
   ad: '[data-testid="placementTracking"]',
   viewer: 'a[data-testid="AppTabBar_Profile_Link"]',
-  // The post a conversation page is about.
   main: 'article[data-testid="tweet"][tabindex="-1"]',
 };
 
@@ -28,7 +29,7 @@ const MEDIA =
 
 type Reply = NonNullable<Post["replyTo"]>;
 
-/** The profile link isn't in every layout X has, so the last one seen stands in. */
+/** The profile link isn't in every layout X renders, so remember the last one seen. */
 let lastViewer: string | null = null;
 
 export const x: SiteAdapter = {
@@ -46,6 +47,17 @@ export const x: SiteAdapter = {
   avatar: (el) =>
     el.querySelector(SEL.avatar)?.querySelector("img")?.getAttribute("src") ?? undefined,
 
+  hasPendingMedia(el) {
+    const slots = el.querySelectorAll(SEL.mediaSlot);
+    if (!slots.length) return false;
+    return [...slots].some(
+      (slot) =>
+        ![...slot.querySelectorAll("img, video[poster]")].some((node) =>
+          MEDIA.test(node.getAttribute("poster") ?? node.getAttribute("src") ?? ""),
+        ),
+    );
+  },
+
   watchData,
 
   readPost(el) {
@@ -54,7 +66,7 @@ export const x: SiteAdapter = {
     if (!own?.handle || (!own.statusId && !isAd)) return null;
     const { handle, statusId, quote } = own;
 
-    // X cuts long posts off at "Show more". Marking the cut keeps it from reading as a cliffhanger.
+    // Marking the "Show more" cut keeps truncated posts from reading as cliffhangers.
     const text = textOf(own.find(SEL.text)) + (own.find(SEL.showMore) ? "…" : "");
     const post: Post = {
       id: statusId ? `x:${statusId}` : `x:ad:${handle}:${text.length}:${text.slice(0, 40)}`,
@@ -81,12 +93,10 @@ export const x: SiteAdapter = {
   },
 };
 
-/** The parts of a post element that belong to it rather than to a post it quotes. */
+/** The parts of a post element belonging to it rather than to a quoted post. */
 function ownParts(el: Element) {
-  // A quoted post has its own author line; the article's first one is the post's.
   const [user, quoteUser] = el.querySelectorAll(SEL.user);
   if (!user) return null;
-  // X renders a quoted post as one big link.
   const quote = quoteUser?.closest('[role="link"]');
   const find = (selector: string) =>
     [...el.querySelectorAll(selector)].find((node) => !quote?.contains(node));
@@ -101,29 +111,32 @@ function ownParts(el: Element) {
 }
 
 /**
- * A conversation page lists the main post, its replies, then headed sections of other posts
- * ("Discover more", "Probable spam"). X unmounts posts far off screen, so the main post may be
- * gone by the time a reply further down renders; which posts are replies is remembered instead,
- * per conversation, so going back to one still works.
+ * X unmounts the main post on a conversation page once you scroll down into replies; remember
+ * each conversation's main post and which status IDs sit in its reply run.
  */
+const MAX_CONVERSATIONS = 50;
 const conversations = new Map<string, { main?: Reply; replies: Map<string, boolean> }>();
 
 function replyContext(el: Element, statusId: string | undefined): Reply | undefined {
   const main = mainPostFor(el, statusId);
   const above = postAbove(el);
-  // X joins a reply to the post above it with a line down from that post's avatar.
+  // X joins a reply to the post above it with an empty thread line next to that post's avatar.
   if (above?.querySelector(SEL.avatar)?.nextElementSibling?.matches(":empty")) {
     return asReply(above);
   }
   return main;
 }
 
-/** On a conversation page, the main post if `el` is one of its replies. */
 function mainPostFor(el: Element, statusId: string | undefined) {
   const mainId = location.pathname.match(/^\/\w+\/status\/(\d+)/)?.[1];
   if (!mainId || !statusId) return undefined;
   let conversation = conversations.get(mainId);
-  if (!conversation) conversations.set(mainId, (conversation = { replies: new Map() }));
+  if (!conversation) {
+    if (conversations.size >= MAX_CONVERSATIONS) {
+      conversations.delete(conversations.keys().next().value!);
+    }
+    conversations.set(mainId, (conversation = { replies: new Map() }));
+  }
   if (el.matches(SEL.main)) {
     conversation.main = asReply(el);
     return undefined;
@@ -137,7 +150,6 @@ function mainPostFor(el: Element, statusId: string | undefined) {
   return isReply ? conversation.main : undefined;
 }
 
-/** Whether `el` is in the run of replies under the main post; undefined if nothing above it shows. */
 function inReplies(el: Element, replies: Map<string, boolean>): boolean | undefined {
   for (const cell of cellsAbove(el)) {
     const post = cell.querySelector(SEL.post);
@@ -152,7 +164,6 @@ function inReplies(el: Element, replies: Map<string, boolean>): boolean | undefi
   return undefined;
 }
 
-/** The post right above `el` in the list, unless a section heading comes first. */
 function postAbove(el: Element): Element | null {
   for (const cell of cellsAbove(el)) {
     const post = cell.querySelector(SEL.post);
@@ -173,12 +184,11 @@ function asReply(el: Element): Reply | undefined {
   return own?.handle ? { handle: own.handle, text: textOf(own.find(SEL.text)) } : undefined;
 }
 
-/** The box under a post is a heading, the note, then a prompt to rate it. */
 function readNote(box: Element | null | undefined): ReaderNote | undefined {
-  // Of the three, only the note is a direct child that sets a text direction.
+  // Heading, note body, and rating prompt are direct children; only the body sets `dir`.
   const body = box?.querySelector(":scope > [dir]");
   if (!box || !body) return undefined;
-  // A note ends with its sources, as links X has cut short.
+  // Strip trailing source links X appends to the note body.
   const parts = [...body.childNodes];
   while (parts.length && (parts.at(-1)!.nodeName === "A" || !rawText(parts.at(-1)!).trim())) {
     parts.pop();
@@ -188,7 +198,7 @@ function readNote(box: Element | null | undefined): ReaderNote | undefined {
 }
 
 function images(el: Element): string[] {
-  // Once a video starts loading its src is a blob, so its poster comes first.
+  // Once a video starts playing its src is a blob, so read poster first.
   const sources = [...el.querySelectorAll("img, video[poster]")].map(
     (node) => node.getAttribute("poster") ?? node.getAttribute("src") ?? "",
   );
@@ -204,7 +214,9 @@ function smallRendition(src: string) {
 
 function handleFrom(href: string | null | undefined) {
   if (!href) return null;
-  return new URL(href, location.origin).pathname.match(/^\/(\w+)(?:\/|$)/)?.[1] ?? null;
+  const handle = new URL(href, location.origin).pathname.match(/^\/(\w+)(?:\/|$)/)?.[1];
+  // `/i/...` is X's internal namespace, not a user handle.
+  return handle && handle !== "i" ? handle : null;
 }
 
 function handleIn(user: Element | null | undefined) {
@@ -214,7 +226,7 @@ function handleIn(user: Element | null | undefined) {
   return at?.slice(1) ?? null;
 }
 
-/** Text with emoji (rendered by X as <img alt>) put back in. */
+/** Text with emoji (rendered by X as `<img alt>`) put back in. */
 function textOf(node: Element | null | undefined): string {
   return node ? rawText(node).trim() : "";
 }

@@ -1,22 +1,23 @@
 import type { ComponentChildren } from "preact";
+import { useMemo } from "preact/hooks";
 import { hiddenAtEach, type CheckedPost } from "../core/checked.ts";
 import { updateSettings, type Settings } from "../core/settings.ts";
 import { STRICTNESS, TRADEOFF, type Strictness } from "../core/taxonomy.ts";
 import { Segments } from "./controls.tsx";
 import type { ActiveTab } from "./hooks.ts";
 
-/**
- * What the goblin has been up to since Chrome started. Once posts have been checked, the
- * strictness levels are the count: each one shows how many of them it would hide, and the
- * chosen one is what's hidden now.
- */
 export function Summary(props: {
   tab: ActiveTab | null;
   settings: Settings;
   checked: CheckedPost[];
 }) {
   const { tab, settings, checked } = props;
-  // Strictness changes nothing while filtering is off, so it isn't offered.
+  const counts = useMemo(
+    () => (settings.enabled && checked.length ? hiddenAtEach(checked, settings) : undefined),
+    [checked, settings],
+  );
+
+  // Strictness changes nothing while filtering is off, so omit it.
   if (!settings.enabled) {
     return (
       <section class="summary" aria-label="Summary">
@@ -26,10 +27,11 @@ export function Summary(props: {
       </section>
     );
   }
-  const counts = checked.length ? hiddenAtEach(checked, settings) : undefined;
+
   const onX = Boolean(tab?.url?.startsWith("https://x.com/"));
   // Tabs opened before the extension was installed don't have the content script yet.
   const reloadId = onX && tab && !tab.state && !tab.loading ? tab.id : undefined;
+
   return (
     <section class="summary" aria-label="Summary">
       {reloadId !== undefined ? (

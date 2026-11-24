@@ -564,8 +564,13 @@ code {
   margin: 0 0 6px 4px;
 }
 
+.list-head h2 {
+  min-width: 0;
+}
+
 .peek {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   height: 28px;
@@ -610,14 +615,110 @@ code {
   font: 500 11px/1 var(--body);
 }
 
+/* A narrow panel keeps the title whole before the shortcut. */
+@media (max-width: 325px) {
+  .peek kbd {
+    display: none;
+  }
+}
+
+/* With two or more kinds hidden, the title is what picks which to show. */
+.list-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.list-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: fade 260ms var(--glide);
+}
+
+.list-title .icon {
+  flex: none;
+  color: var(--muted);
+  transition:
+    color 180ms,
+    transform 320ms var(--spring);
+}
+
+.list-title:hover .icon {
+  color: var(--ink);
+}
+
+.list-title[aria-expanded="true"] .icon {
+  transform: rotate(180deg);
+}
+
+/* The kinds, as rows like "What to hide" in Settings. The one shown is filled, like an open
+   post, and each count ends where a post's reason does. The box that clips while they open is
+   as wide as the rows, so their rounded ends show. */
+.kinds {
+  margin: 0 -4px;
+}
+
+.kinds .rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-bottom: 8px;
+}
+
+.kinds .row {
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.kinds .row-title {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.kinds .row[aria-pressed="true"] {
+  background: var(--well);
+}
+
+.kinds .row-count {
+  color: var(--muted);
+}
+
+.kinds .row[aria-pressed="true"] .row-title {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.kinds .row:focus-visible {
+  outline-offset: -2px;
+}
+
+.kinds.is-open .row {
+  animation: tray-in 280ms var(--glide) both;
+  animation-delay: calc(40ms + var(--i) * 25ms);
+}
+
 /* Rows start 12px in, so what's in them starts at 20 like everything else. */
 .list {
   margin: 0 -4px;
 }
 
+/* Each row keeps the space under it, so the space grows and folds away with the row. */
 .item {
   display: grid;
   grid-template-rows: 1fr;
+  margin-bottom: 4px;
   animation: row-in 420ms var(--glide) both;
   animation-delay: calc(var(--order, 0) * 45ms);
 }
@@ -644,6 +745,7 @@ code {
 @keyframes row-in {
   from {
     grid-template-rows: 0fr;
+    margin-bottom: 0;
     opacity: 0;
     transform: translateY(-6px);
   }
@@ -652,17 +754,22 @@ code {
 @keyframes row-out {
   to {
     grid-template-rows: 0fr;
+    margin-bottom: 0;
     opacity: 0;
     transform: translateX(16px);
   }
 }
 
-.item-open {
+.item-open,
+.item-settled {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
   column-gap: 12px;
   width: 100%;
   padding: 10px 8px;
+}
+
+.item-open {
   border: 0;
   border-radius: 16px;
   background: none;
@@ -684,6 +791,10 @@ code {
   border-radius: 50%;
   background: var(--well);
   color: var(--muted);
+}
+
+.avatar-initial {
+  font: 700 13px/1 var(--display);
 }
 
 .avatar img {
@@ -756,18 +867,40 @@ code {
   font-style: italic;
 }
 
-/* What can be done about a post, under its text once it's opened. */
-.item-actions {
+/* A row just let through keeps its face and name. Undo is where the reason was, and the text
+   says what happened, until the row folds away. */
+.item-settled .item-body {
+  animation: fade 260ms var(--glide);
+}
+
+.item-settled .item-text {
+  color: var(--muted);
+}
+
+.item-undo {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.item-undo:hover {
+  text-decoration: underline;
+}
+
+/* Opens in place and pushes what's under it down: what can be done about a post, under its
+   text, and the kinds, under the title. */
+.unfold {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 320ms var(--glide);
 }
 
-.item.is-open .item-actions {
+.unfold.is-open {
   grid-template-rows: 1fr;
 }
 
-.item-actions > div {
+.unfold > div {
   min-height: 0;
   overflow: hidden;
 }

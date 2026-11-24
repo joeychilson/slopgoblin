@@ -4,7 +4,7 @@ import { store } from "../core/storage.ts";
 import { startBadge, updateBadge } from "./badge.ts";
 import { prune } from "./cache.ts";
 import { recordChecked, updateChecked } from "./checked.ts";
-import { classify, setApiKey, setNotSlop } from "./classifier.ts";
+import { classify, prioritize, setApiKey, setNotSlop } from "./classifier.ts";
 
 void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 startBadge();
@@ -29,12 +29,15 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
   switch (message.type) {
     case "classify":
       keyLoaded
-        .then(() => classify(message.post, message.cachedOnly))
+        .then(() => classify(message.post, message.cachedOnly, message.priority))
         .then(sendResponse, (error: unknown) => {
           console.error("Slop Goblin:", error);
           sendResponse({ unavailable: true } satisfies ClassifyResponse);
         });
       return true;
+    case "prioritize":
+      prioritize(message.ids);
+      return false;
     case "checked":
       void recordChecked(message.posts).then(updateBadge);
       return false;

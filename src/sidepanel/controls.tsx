@@ -92,6 +92,7 @@ export const ICONS = {
   settings:
     "M4 7h9M17 7h3M4 17h3M11 17h9M15 5a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM9 15a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z",
   back: "M15 5l-7 7 7 7",
+  chevron: "M6 9l6 6 6-6",
   eye: "M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12ZM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z",
   eyeOff: EYE_OFF,
   close: "M7 7l10 10M17 7 7 17",

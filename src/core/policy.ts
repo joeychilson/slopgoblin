@@ -47,22 +47,25 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
   const known = settled(post, settings);
   if (known) return known === "shown" ? null : known;
 
-  // A post that's several kinds has its chance split between them. It's hidden when it's junk
-  // and at least half of that is kinds switched on, so switching a kind off shows the posts that
-  // are mostly that kind, and only those.
+  // A post that's several kinds has its chance split between them. Hide it when it's junk and
+  // either its likeliest kind is switched on, or at least half of its junk score is kinds switched on.
   let score = 0;
   let on = 0;
-  let top: { id: CategoryId; p: number } | undefined;
+  let topAll: { id: CategoryId; p: number } | undefined;
+  let topOn: { id: CategoryId; p: number } | undefined;
   for (const { id } of CATEGORIES) {
     const p = post.scores[id];
     if (p === undefined) continue;
     score += p;
+    if (!topAll || p > topAll.p) topAll = { id, p };
     if (!settings.categories[id]) continue;
     on += p;
-    if (!top || p > top.p) top = { id, p };
+    if (!topOn || p > topOn.p) topOn = { id, p };
   }
-  return top && score >= THRESHOLD[settings.strictness] && on >= score / 2
-    ? { category: top.id, score }
+  return topOn &&
+    score >= THRESHOLD[settings.strictness] &&
+    (on >= score / 2 || (topAll !== undefined && topOn.p >= topAll.p))
+    ? { category: topOn.id, score }
     : null;
 }
 

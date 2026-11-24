@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1
+
+- **Fewer real headlines hidden.** A post is now hidden only when one kind of junk stands out, at
+  30% or more. Dramatic finance headlines that the model can't place as one kind now stay up. On
+  everyday feeds, Balanced hides about 1 real post in 300 by mistake (down from 1 in 200), and
+  Strict about 1 in 90 (down from 1 in 70).
+- **Replies keep the post they answer.** On a conversation page, a reply is no longer judged
+  against the main post after X unloads the post it answers.
+- **No posts are checked again** after updating: what Google already answered still counts.
+
 ## 0.3.0
 
 - **Better detection with fewer mistakes.** Catches more ragebait and posts quoting fakes under a

@@ -47,16 +47,8 @@ export const x: SiteAdapter = {
   avatar: (el) =>
     el.querySelector(SEL.avatar)?.querySelector("img")?.getAttribute("src") ?? undefined,
 
-  hasPendingMedia(el) {
-    const slots = el.querySelectorAll(SEL.mediaSlot);
-    if (!slots.length) return false;
-    return [...slots].some(
-      (slot) =>
-        ![...slot.querySelectorAll("img, video[poster]")].some((node) =>
-          MEDIA.test(node.getAttribute("poster") ?? node.getAttribute("src") ?? ""),
-        ),
-    );
-  },
+  hasPendingMedia: (el) =>
+    [...el.querySelectorAll(SEL.mediaSlot)].some((slot) => !images(slot).length),
 
   watchData,
 

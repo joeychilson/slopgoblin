@@ -178,15 +178,10 @@ const defuse = (text: string) => text.replace(/<(\s*\/?\s*[a-z][^<>]*)>/gi, "‹
 const tag = (name: string, text: string, max: number) =>
   `<${name}>\n${defuse(clip(text, max))}\n</${name}>`;
 
-function imageMime(uri: string): string {
-  try {
-    const url = new URL(uri);
-    const ext = url.searchParams.get("format") ?? url.pathname.split(".").pop() ?? "";
-    if (ext === "png" || ext === "webp" || ext === "gif") return `image/${ext}`;
-  } catch {
-    // Fall back to jpeg on malformed URIs.
-  }
-  return "image/jpeg";
+function imageMime(uri: string) {
+  const url = new URL(uri);
+  const ext = url.searchParams.get("format") ?? url.pathname.split(".").pop();
+  return ext === "png" || ext === "webp" || ext === "gif" ? `image/${ext}` : "image/jpeg";
 }
 
 const BLOCKED_CODES = new Set([

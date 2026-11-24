@@ -50,10 +50,9 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
 
   // Rows there when the panel opens arrive one after another; rows that turn up later, from a
   // new post or a filter, arrive at once.
-  const firstOrder = useRef<Map<string, number> | null>(null);
-  firstOrder.current ??= new Map(hidden.map(({ post }, i) => [post.id, Math.min(i, 10)]));
+  const opening = useRef(true);
   useEffect(() => {
-    firstOrder.current = new Map();
+    opening.current = false;
   }, []);
 
   // Let-through rows stay in their place until they fold away.
@@ -66,12 +65,9 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
 
   // In the order Settings lists them, so they stay put as counts change.
   const kinds = useMemo(() => {
-    const counts = new Map<CategoryId, number>();
-    for (const { verdict } of rows) {
-      counts.set(verdict.category, (counts.get(verdict.category) ?? 0) + 1);
-    }
+    const byKind = Map.groupBy(rows, ({ verdict }) => verdict.category);
     return CATEGORIES.flatMap(({ id }) => {
-      const count = counts.get(id);
+      const count = byKind.get(id)?.length;
       return count ? [[id, count] as const] : [];
     });
   }, [rows]);
@@ -346,7 +342,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
             );
           }}
         >
-          {visible.map((item) => {
+          {visible.map((item, i) => {
             const { id } = item.post;
             const settled = settling.get(id);
             return (
@@ -354,7 +350,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
                 key={id}
                 item={item}
                 tabId={tabId}
-                order={firstOrder.current!.get(id) ?? -1}
+                order={opening.current ? Math.min(i, 10) : -1}
                 open={open === id}
                 settled={settled && !settled.undone && !settled.quiet ? settled.action : undefined}
                 leaving={Boolean(settled?.leaving)}

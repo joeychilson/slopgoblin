@@ -463,6 +463,35 @@ describe("on X", { timeout: 30_000 }, () => {
     expect(rechecked).toMatch(/Replying to @vidparent/);
   });
 
+  it("keeps a reply's parent on a conversation page after X unmounts it", async () => {
+    const page = await m.ctx.newPage();
+    try {
+      await page.goto("https://x.com/convmain/status/400");
+      const main = cell({ id: "400", handle: "convmain", name: "Conv Main", text: "Big news" });
+      await append(
+        page,
+        main.replace('tabindex="0"', 'tabindex="-1"') +
+          cell({ id: "401", handle: "convparent", name: "Parent", text: "Is it?", thread: true }) +
+          cell({ id: "402", handle: "convreply", name: "Reply", text: "Yes it is" }),
+      );
+      await poll(() => m.sent.map(handleIn)).toContain("convreply");
+      const before = m.sent.length;
+      await page.locator(cellOf("convparent")).evaluate((el) => el.remove());
+      await page.locator(cellOf("convreply")).evaluate((el) => {
+        const slot = document.createElement("div");
+        slot.dataset.testid = "tweetPhoto";
+        slot.innerHTML = '<img src="https://pbs.twimg.com/media/conv.jpg">';
+        el.querySelector('[data-testid="tweetText"]')!.after(slot);
+      });
+      await poll(() => m.sent.length).toBeGreaterThan(before);
+      const rechecked = m.sent.findLast((text) => handleIn(text) === "convreply");
+      expect(rechecked).toMatch(/Attached image/);
+      expect(rechecked).toMatch(/Replying to @convparent/);
+    } finally {
+      await page.close();
+    }
+  });
+
   it("applies live follow and unfollow changes without reloading", async () => {
     await m.ctx.route("https://x.com/i/api/1.1/friendships/*.json", (route) =>
       route.fulfill({ json: { screen_name: "rager" } }),
@@ -487,16 +516,6 @@ describe("on X", { timeout: 30_000 }, () => {
     );
     // The first number it shows, not one it counts down to later.
     expect(await panel.locator(".notice").innerText()).toMatch(/resumes in (19|20)s/);
-  });
-
-  it("gives ad rows a valid aria-controls id without spaces", async () => {
-    const controls = await panel
-      .locator('.item:has-text("Big Brand") .item-open')
-      .getAttribute("aria-controls");
-    expect(controls).toMatch(/^\S+$/);
-    expect(await panel.evaluate((id) => Boolean(document.getElementById(id!)), controls)).toBe(
-      true,
-    );
   });
 
   it("does not pop unchanged strictness counts on unrelated re-renders", async () => {

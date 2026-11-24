@@ -33,7 +33,6 @@ interface Tracked {
   notSlop: boolean;
   revealed: boolean;
   letThrough?: "not-slop" | "trust";
-  verdict: Verdict | null;
   checkedAt?: number;
   avatar?: string;
 }
@@ -129,18 +128,15 @@ class Feed {
         continue;
       }
       this.nearCells.add(cell);
-      const postEl = cell.querySelector(`[${ID_ATTR}]`);
-      const t = postEl && this.trackedOf(postEl);
-      if (t && this.wantsRequest(t)) void this.request(t);
+      const t = this.trackedIn(cell);
+      if (t) this.askIfNear(t);
     }
   }
 
   private onViewport(entries: IntersectionObserverEntry[]) {
     const ids: string[] = [];
     for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      const postEl = entry.target.querySelector(`[${ID_ATTR}]`);
-      const t = postEl && this.trackedOf(postEl);
+      const t = entry.isIntersecting ? this.trackedIn(entry.target) : undefined;
       if (t?.queued) ids.push(t.post.id);
     }
     if (ids.length) void this.send({ type: "prioritize", ids });
@@ -170,12 +166,8 @@ class Feed {
 
       el.setAttribute(ID_ATTR, post.id);
       const t = this.posts.get(post.id) ?? this.track(post);
-      if (!t.avatar) t.avatar = this.site.avatar(el);
-      const merged = mergePost(t.post, post);
-      if (gainedContent(merged, t.post)) {
-        t.post = merged;
-        if (t.status === "done") t.status = "idle";
-      }
+      t.avatar ??= this.site.avatar(el);
+      this.absorb(t, post);
       // Observe the cell wrapper rather than `<article>`, which goes `display: none` when collapsed.
       this.intersection.observe(cell);
       this.viewport.observe(cell);
@@ -202,31 +194,30 @@ class Feed {
     if (wake && !this.site.hasPendingMedia?.(el)) wake();
 
     const reread = this.site.readPost(el);
-    if (reread) {
-      const merged = mergePost(t.post, reread);
-      if (gainedContent(merged, t.post)) {
-        t.post = merged;
-        if (t.status === "done") t.status = "idle";
-        if (this.wantsRequest(t) && this.isNear(el)) void this.request(t);
-      }
-    }
+    if (reread && this.absorb(t, reread)) this.askIfNear(t);
+  }
+
+  /**
+   * Takes in a fresh read of a post. Only a gain counts, since X often reads a post again with
+   * less, such as after unmounting its parent. True when it should be asked about again.
+   */
+  private absorb(t: Tracked, read: Post) {
+    const merged = mergePost(t.post, read);
+    const gained =
+      addsContext(merged, t.post) || (!hasJudgeableContent(t.post) && hasJudgeableContent(merged));
+    if (!gained) return false;
+    t.post = merged;
+    if (t.status === "done") t.status = "idle";
+    return true;
   }
 
   private track(post: Post): Tracked {
-    const t: Tracked = {
-      post,
-      status: "idle",
-      scores: {},
-      notSlop: false,
-      revealed: false,
-      verdict: null,
-    };
     for (const [id, old] of this.posts) {
       if (this.posts.size < KEEP) break;
       if (!this.elementsOf(old).length) this.posts.delete(id);
     }
+    const t: Tracked = { post, status: "idle", scores: {}, notSlop: false, revealed: false };
     this.posts.set(post.id, t);
-    t.verdict = judge(this.judged(t), this.settings);
     return t;
   }
 
@@ -236,14 +227,13 @@ class Feed {
       if (t.letThrough === "trust" && !this.settings.trusted.includes(handleOf(t))) {
         t.letThrough = undefined;
       }
-      t.verdict = judge(this.judged(t), this.settings);
     }
     for (const el of document.querySelectorAll(`[${ID_ATTR}]`)) {
       const t = this.trackedOf(el);
       if (!t) continue;
       // Show first so previously `display: none` cells have a real rect for `isNear`.
       this.show(t, el, true);
-      if (this.wantsRequest(t) && this.isNear(el)) void this.request(t);
+      this.askIfNear(t);
     }
     this.changed();
   }
@@ -255,8 +245,8 @@ class Feed {
     const ids = new Set(data.labels.map(([id]) => id));
     for (const t of this.posts.values()) {
       if (!handles.has(handleOf(t)) && !ids.has(t.post.id)) continue;
-      this.update(t, false);
-      if (this.wantsRequest(t) && this.hasNearElement(t)) void this.request(t);
+      this.render(t, false);
+      this.askIfNear(t);
       this.touched(t);
     }
   }
@@ -275,12 +265,21 @@ class Feed {
     return [...new Set([...t.post.labels, ...(this.labels.get(t.post.id) ?? [])])];
   }
 
+  private verdict(t: Tracked) {
+    return judge(this.judged(t), this.settings);
+  }
+
+  /** Whether the model's answer could change how the post is shown. */
+  private worthAsking(t: Tracked) {
+    return needsScores({ ...this.judged(t), isReply: isReply(t.post) }, this.settings);
+  }
+
   private wantsRequest(t: Tracked) {
-    return (
-      !this.stopped &&
-      (t.status === "idle" || t.status === "failed") &&
-      needsScores({ ...this.judged(t), isReply: isReply(t.post) }, this.settings)
-    );
+    return !this.stopped && (t.status === "idle" || t.status === "failed") && this.worthAsking(t);
+  }
+
+  private askIfNear(t: Tracked) {
+    if (this.wantsRequest(t) && this.hasNearElement(t)) void this.request(t);
   }
 
   private async request(t: Tracked, cacheOnly = false) {
@@ -294,9 +293,7 @@ class Feed {
       if (cacheOnly && !this.hasNearElement(t)) return this.setIdle(t);
       const el = await this.settle(t);
       if (this.stopped) return;
-      if (!el || !needsScores({ ...this.judged(t), isReply: isReply(t.post) }, this.settings)) {
-        return this.setIdle(t);
-      }
+      if (!el || !this.worthAsking(t)) return this.setIdle(t);
       const reread = this.site.readPost(el);
       if (reread) t.post = mergePost(t.post, reread);
       // Don't send an empty placeholder shell before its text or media has appeared.
@@ -315,21 +312,19 @@ class Feed {
       t.scores = res.scores;
       t.notSlop ||= res.notSlop;
       t.status = "done";
-      t.verdict = judge(this.judged(t), this.settings);
       t.checkedAt ??= Date.now();
       this.touched(t);
-      for (const el of this.elementsOf(t)) this.show(t, el, false);
-      if (addsContext(t.post, asked)) {
+      this.render(t, false);
+      // It gained context while it was being asked about.
+      if (t.post !== asked) {
         t.status = "idle";
-        if (this.wantsRequest(t) && this.hasNearElement(t)) void this.request(t);
+        this.askIfNear(t);
       }
     } else if ("needsKey" in res) {
       this.setIdle(t);
     } else {
       t.status = "failed";
-      setTimeout(() => {
-        if (this.wantsRequest(t) && this.hasNearElement(t)) void this.request(t);
-      }, RETRY_MS);
+      setTimeout(() => this.askIfNear(t), RETRY_MS);
       this.changed();
     }
   }
@@ -341,6 +336,11 @@ class Feed {
 
   private trackedOf(el: Element) {
     return this.posts.get(el.getAttribute(ID_ATTR) ?? "");
+  }
+
+  private trackedIn(cell: Element) {
+    const el = cell.querySelector(`[${ID_ATTR}]`);
+    return el ? this.trackedOf(el) : undefined;
   }
 
   private async settle(t: Tracked): Promise<Element | undefined> {
@@ -373,8 +373,7 @@ class Feed {
     );
   }
 
-  private update(t: Tracked, fresh: boolean) {
-    t.verdict = judge(this.judged(t), this.settings);
+  private render(t: Tracked, fresh: boolean) {
     for (const el of this.elementsOf(t)) this.show(t, el, fresh);
   }
 
@@ -397,11 +396,12 @@ class Feed {
   private show(t: Tracked, el: Element, fresh: boolean) {
     const cell = this.site.container(el);
     if (!cell || this.stopped) return;
-    if (t.verdict?.labeled && t.checkedAt === undefined) {
+    const verdict = this.verdict(t);
+    if (verdict?.labeled && t.checkedAt === undefined) {
       t.checkedAt = Date.now();
       this.touched(t);
     }
-    const view = viewFor(t, this.settings);
+    const view = viewFor(t, verdict, this.settings);
     // Avoid shifting the page under the reader for posts already scrolled above the fold.
     const reshapes = view.mode !== (cell.dataset.sg ?? "shown");
     if (!fresh && reshapes && cell.getBoundingClientRect().top < 0) return;
@@ -425,12 +425,12 @@ class Feed {
       case "reveal":
       case "hide":
         t.revealed = action === "reveal";
-        this.update(t, true);
+        this.render(t, true);
         break;
       case "not-slop":
         t.letThrough = "not-slop";
         t.notSlop = true;
-        this.update(t, true);
+        this.render(t, true);
         void this.send({ type: "not-slop", id: t.post.id, notSlop: true });
         break;
       case "trust":
@@ -443,7 +443,7 @@ class Feed {
           void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handleOf(t)) }));
         } else {
           t.notSlop = false;
-          this.update(t, true);
+          this.render(t, true);
           void this.send({ type: "not-slop", id: t.post.id, notSlop: false });
         }
         t.letThrough = undefined;
@@ -463,7 +463,7 @@ class Feed {
       case "retry":
         for (const el of document.querySelectorAll(`[${ID_ATTR}]`)) {
           const t = this.trackedOf(el);
-          if (t && this.wantsRequest(t) && this.isNear(el)) void this.request(t);
+          if (t) this.askIfNear(t);
         }
         break;
       case "reveal": {
@@ -479,10 +479,10 @@ class Feed {
       case "not-slop": {
         const t = this.posts.get(message.id);
         if (!t || t.notSlop === message.notSlop) break;
-        if (message.notSlop && t.verdict) t.letThrough = "not-slop";
+        if (message.notSlop && this.verdict(t)) t.letThrough = "not-slop";
         if (!message.notSlop && t.letThrough === "not-slop") t.letThrough = undefined;
         t.notSlop = message.notSlop;
-        this.update(t, false);
+        this.render(t, false);
         break;
       }
     }
@@ -557,9 +557,6 @@ const handleOf = (t: Tracked) => t.post.author.handle.toLowerCase();
 const hasJudgeableContent = (post: Post) =>
   Boolean(post.text || post.images?.length || post.quote || post.link || post.readerNote);
 
-const gainedContent = (next: Post, prev: Post) =>
-  addsContext(next, prev) || (!hasJudgeableContent(prev) && hasJudgeableContent(next));
-
 function bestNote(prev: ReaderNote | undefined, next: ReaderNote | undefined) {
   if (!prev) return next;
   if (!next) return prev;
@@ -580,7 +577,8 @@ function mergePost(prev: Post, next: Post): Post {
     ...next,
     text: next.text || prev.text,
     images: (next.images?.length ?? 0) >= (prev.images?.length ?? 0) ? next.images : prev.images,
-    replyTo: next.replyTo ?? prev.replyTo,
+    // Once X unmounts the parent, a conversation page reads the main post as the parent instead.
+    replyTo: prev.replyTo ?? next.replyTo,
     readerNote: bestNote(prev.readerNote, next.readerNote),
     quote,
     link: next.link ?? prev.link,
@@ -593,8 +591,8 @@ function priorityOf(el: Element): Priority {
   return rect.bottom > 0 && rect.top < innerHeight ? 0 : 1;
 }
 
-function viewFor(t: Tracked, settings: Settings): View {
-  const { verdict, post, letThrough } = t;
+function viewFor(t: Tracked, verdict: Verdict | null, settings: Settings): View {
+  const { post, letThrough } = t;
   if (verdict) {
     const base = {
       id: post.id,

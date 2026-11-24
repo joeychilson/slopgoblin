@@ -40,7 +40,7 @@ content script (x.com)            service worker                    Gemini
 - **One multiple-choice question per post.** The model is asked which label fits best: one
   of the junk categories, or `fine`. It answers with a probability for every option. A post
   is hidden when its chance of being junk is more than your strictness asks for (75%, 60% or
-  50%), its likeliest kind has at least 30% of it, and either that kind or at least half of
+  50%), its likeliest kind is at least 30% likely, and either that kind or at least half of
   the junk chance is kinds you have switched on; the bar names the likeliest of those. Asking once, with `fine` spelled out as
   an option, is what keeps real posts in: separate yes/no questions per category each found
   something to object to in ordinary fan posts and replies. The kinds overlap, so a post

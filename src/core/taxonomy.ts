@@ -16,10 +16,10 @@ interface Category {
  * detail is what keeps real posts out, so measure before trimming it.
  */
 export const QUESTION =
-  "Which label best fits this post from an X (Twitter) feed? Judge the post itself; a parent or quoted post is only context. Posts are recent and often report events, releases and prices you haven't heard of: don't judge whether a claim is true, only how the post is made.";
+  "Which label best fits this post from an X (Twitter) feed? Judge the post itself; a parent or quoted post is only context. Posts are recent and often report events, releases, media and prices you haven't heard of: unless a community note says otherwise, don't judge whether a claim is true, only how the post is made.";
 
 export const FINE =
-  "A normal post or reply. News: headlines and updates that say what happened, even with BREAKING or JUST IN, and even about events, releases or prices you haven't heard of; opinions and criticism about politics, public figures or events, even harsh or partisan ones; jokes and memes; fans reacting to a team, player, show or artist; sports banter; personal updates; someone's own work; real questions. A reply that reacts to its parent post, however short: congratulations, thanks, agreement, disagreement, an insult, a joke.";
+  "A normal post or reply. News: headlines, updates, posters and galleries that say what happened or show an announcement, even with BREAKING or JUST IN, and even about events, films, games, castings, releases or prices you haven't heard of; opinions and criticism about politics, public figures or events, even harsh or partisan ones; jokes and memes; fans reacting to a team, player, show or artist; sports banter; personal updates; someone's own work; real questions. A reply that reacts to its parent post, however short: congratulations, thanks, agreement, disagreement, an insult, a joke.";
 
 /** Minimum probability of junk to hide a post. Tuned with `vp run eval`. */
 export const THRESHOLD: Record<Strictness, number> = { relaxed: 0.75, balanced: 0.6, strict: 0.5 };
@@ -29,7 +29,7 @@ export const STRICTNESS = Object.keys(THRESHOLD) as Strictness[];
 /**
  * What each strictness costs, in a few words, as `vp run eval` measures it on timelines and
  * reply threads: Relaxed catches about 3 in 5 junk posts and hides 1 real post in 800,
- * Balanced about 3 in 4 and 1 in 170, Strict about 4 in 5 and 1 in 70. Re-measure after moving a
+ * Balanced about 3 in 4 and 1 in 200, Strict over 4 in 5 and 1 in 70. Re-measure after moving a
  * threshold.
  */
 export const TRADEOFF: Record<Strictness, string> = {
@@ -44,7 +44,7 @@ export const CATEGORIES = [
     label: "Ragebait",
     blurb: "Built to make you angry",
     describes:
-      "Bait built to make people angry for engagement: sweeping put-downs of a whole kind of person (women, men, a generation, a nationality, a profession), gender-war bait, outrage over trivial or made-up everyday incidents, and outrage-clip accounts whose caption is framed to provoke ('X was SHOCKED that…').",
+      "Bait built to make people angry for engagement: sweeping put-downs or stereotypes of a whole group (women, men, a race, a generation, a nationality, a profession, or a lifestyle/political out-group), racial slurs or '#noticing' tropes, gender-war or us-vs-them demonization ('they hate you'), outrage over trivial or made-up everyday incidents, and outrage-clip accounts whose caption is framed to provoke ('X was SHOCKED that…').",
   },
   {
     id: "ai_slop",

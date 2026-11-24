@@ -17,7 +17,7 @@ While filtering is on, each post you scroll past on x.com is sent to Google's
 - the text of a link card, if it has one;
 - the addresses of up to two of its images, which Google fetches from X.
 
-A post is sent once, and again only if the post it replies to or a community note turns up later. These are never
+A post is sent once, and again only if its images, the post it replies to, or a community note turn up later. These are never
 sent to be judged: your own posts, posts from people you follow (unless you switch that
 setting off), posts from accounts you've marked "Always show", ads, posts X labels "Made with
 AI" (unless you switch that category off), and the post a page is about. When someone else replies to or quotes one of them, its text and handle still go along

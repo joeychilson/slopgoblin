@@ -1,51 +1,158 @@
-import { useEffect, useId, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import type { HiddenPost } from "../core/checked.ts";
 import type { RuntimeMessage } from "../core/messages.ts";
 import { reason } from "../core/policy.ts";
 import { displayName } from "../core/post.ts";
 import { updateSettings } from "../core/settings.ts";
+import { CATEGORY, type CategoryId } from "../core/taxonomy.ts";
 import { ICONS, Icon } from "./controls.tsx";
 import { sendToTab } from "./hooks.ts";
 
-/** How long a row takes to fold away; matches `row-out` in panel.css. */
+/** Matches `row-out` in panel.css. */
 const LEAVE_MS = 240;
-/** How long a row takes to open; matches `.item-actions` in panel.css. */
+/** Matches `.item-actions` in panel.css. */
 const OPEN_MS = 320;
+const PAGE_SIZE = 50;
+const UNDO_MS = 6000;
 
-/**
- * Everything hidden lately, in any tab, newest first: who posted it, why it went, and what it
- * says. Clicking one opens it in place, with the whole text and what can be done about it; one
- * is open at a time. Rows there when the panel opens arrive one after another; later ones slide
- * in at the top.
- */
-export function HiddenList(props: {
-  hidden: HiddenPost[];
-  /** The active tab, when Slop Goblin runs in it: a post still on that page is shown there. */
-  tabId?: number;
-  peek: boolean;
-}) {
+type UndoAction =
+  | { kind: "not-slop"; id: string; text: string }
+  | { kind: "trust"; handle: string; text: string };
+
+export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: boolean }) {
   const { tabId, hidden } = props;
   const [open, setOpen] = useState<string | null>(null);
+  const [filter, setFilter] = useState<CategoryId | null>(null);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [undo, setUndo] = useState<UndoAction | null>(null);
+
   const firstOrder = useRef<Map<string, number> | null>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
   firstOrder.current ??= new Map(hidden.map(({ post }, i) => [post.id, Math.min(i, 10)]));
+
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<CategoryId, number>();
+    for (const { verdict } of hidden) {
+      counts.set(verdict.category, (counts.get(verdict.category) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [hidden]);
+
+  useEffect(() => {
+    if (filter && !categoryCounts.some(([id]) => id === filter)) {
+      setFilter(null);
+      filtersRef.current?.scrollTo({ left: 0 });
+    }
+  }, [filter, categoryCounts]);
+
+  const activeFilter = filter && categoryCounts.some(([id]) => id === filter) ? filter : null;
+  const filtered = useMemo(
+    () =>
+      activeFilter ? hidden.filter(({ verdict }) => verdict.category === activeFilter) : hidden,
+    [hidden, activeFilter],
+  );
+  const visible = filtered.slice(0, limit);
+  const remaining = filtered.length - visible.length;
+
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [undo]);
+
+  function performUndo() {
+    if (!undo) return;
+    if (undo.kind === "not-slop") {
+      void chrome.runtime.sendMessage<RuntimeMessage>({
+        type: "not-slop",
+        id: undo.id,
+        notSlop: false,
+      });
+    } else {
+      const handle = undo.handle;
+      void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
+    }
+    setUndo(null);
+  }
+
+  if (!hidden.length && !props.peek && !undo) return null;
+
   return (
-    <section class="hidden" aria-labelledby="hidden-title">
-      <div class="list-head">
-        <h2 id="hidden-title">Hidden posts</h2>
-        <Peek on={props.peek} />
-      </div>
-      <ul class="list" onKeyDown={(event) => event.key === "Escape" && setOpen(null)}>
-        {hidden.map((item) => (
-          <Item
-            key={item.post.id}
-            item={item}
-            tabId={tabId}
-            order={firstOrder.current!.get(item.post.id) ?? -1}
-            open={open === item.post.id}
-            onToggle={(next) => setOpen(next ? item.post.id : null)}
-          />
-        ))}
-      </ul>
+    <section
+      class="hidden"
+      aria-labelledby={hidden.length || props.peek ? "hidden-title" : undefined}
+    >
+      {(hidden.length > 0 || props.peek) && (
+        <div class="list-head">
+          <h2 id="hidden-title">Hidden posts</h2>
+          <Peek on={props.peek} />
+        </div>
+      )}
+
+      {undo && (
+        <div class="undo-bar" role="status">
+          <span>{undo.text}</span>
+          <button type="button" class="undo-link" onClick={performUndo}>
+            Undo
+          </button>
+        </div>
+      )}
+
+      {categoryCounts.length >= 2 && (
+        <div ref={filtersRef} class="filters" role="group" aria-label="Filter by category">
+          <button
+            type="button"
+            class="filter-pill"
+            aria-pressed={activeFilter === null}
+            onClick={() => {
+              setFilter(null);
+              setLimit(PAGE_SIZE);
+            }}
+          >
+            All <span>{hidden.length}</span>
+          </button>
+          {categoryCounts.map(([id, count]) => (
+            <button
+              key={id}
+              type="button"
+              class="filter-pill"
+              aria-pressed={activeFilter === id}
+              onClick={() => {
+                setFilter(activeFilter === id ? null : id);
+                setLimit(PAGE_SIZE);
+              }}
+            >
+              {CATEGORY[id].label} <span>{count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {visible.length > 0 && (
+        <ul class="list" onKeyDown={(event) => event.key === "Escape" && setOpen(null)}>
+          {visible.map((item) => (
+            <Item
+              key={item.post.id}
+              item={item}
+              tabId={tabId}
+              order={firstOrder.current!.get(item.post.id) ?? -1}
+              open={open === item.post.id}
+              onToggle={(next) => setOpen(next ? item.post.id : null)}
+              onUndo={setUndo}
+            />
+          ))}
+        </ul>
+      )}
+
+      {remaining > 0 && (
+        <button
+          type="button"
+          class="button small load-more"
+          onClick={() => setLimit((n) => n + PAGE_SIZE)}
+        >
+          Show {Math.min(remaining, PAGE_SIZE)} older ({remaining} more)
+        </button>
+      )}
     </section>
   );
 }
@@ -73,8 +180,9 @@ function Item(props: {
   order: number;
   open: boolean;
   onToggle: (open: boolean) => void;
+  onUndo: (action: UndoAction) => void;
 }) {
-  const { item, tabId, order, open, onToggle } = props;
+  const { item, tabId, order, open, onToggle, onUndo } = props;
   const { post, verdict } = item;
   const [leaving, setLeaving] = useState(false);
   const row = useRef<HTMLLIElement>(null);
@@ -83,7 +191,6 @@ function Item(props: {
   const name = displayName(post);
   const actionsId = useId();
 
-  // Once it has opened, a row near the bottom scrolls up into view.
   useEffect(() => {
     if (!open) return;
     const timer = setTimeout(
@@ -99,27 +206,25 @@ function Item(props: {
     if (!found) await chrome.tabs.create({ url: post.url });
   }
 
-  // The row folds away first. Then the service worker is told, which takes it off the list and
-  // lets it through in every tab that has it.
   function letThrough() {
+    if (leaving) return;
     onToggle(false);
     setLeaving(true);
-    setTimeout(
-      () =>
-        void chrome.runtime.sendMessage<RuntimeMessage>({
-          type: "not-slop",
-          id: post.id,
-          notSlop: true,
-        }),
-      LEAVE_MS,
-    );
+    setTimeout(() => {
+      void chrome.runtime.sendMessage<RuntimeMessage>({
+        type: "not-slop",
+        id: post.id,
+        notSlop: true,
+      });
+      onUndo({ kind: "not-slop", id: post.id, text: "This post won't be hidden again" });
+    }, LEAVE_MS);
   }
 
   function trust() {
+    const handle = post.handle.toLowerCase();
     onToggle(false);
-    void updateSettings((s) => ({
-      trusted: [...new Set([...s.trusted, post.handle.toLowerCase()])],
-    }));
+    void updateSettings((s) => ({ trusted: [...new Set([...s.trusted, handle])] }));
+    onUndo({ kind: "trust", handle, text: `Posts from ${name} will always show` });
   }
 
   const classes = ["item", open && "is-open", leaving && "is-leaving"].filter(Boolean).join(" ");
@@ -137,7 +242,16 @@ function Item(props: {
             {isNsfw ? (
               <Icon d={ICONS.eyeOff} size={16} />
             ) : (
-              post.avatar && <img src={post.avatar} alt="" width="32" height="32" />
+              post.avatar && (
+                <img
+                  src={post.avatar}
+                  alt=""
+                  width="32"
+                  height="32"
+                  loading="lazy"
+                  decoding="async"
+                />
+              )
             )}
           </span>
           <span class="item-body">
@@ -147,7 +261,6 @@ function Item(props: {
                 {possibly ? `Possibly ${midSentence}` : label}
               </span>
             </span>
-            {/* Explicit text isn't repeated here; the feed covers it too. */}
             <span class={isNsfw || !post.text ? "item-text is-empty" : "item-text"}>
               {isNsfw ? "Text hidden" : post.text || "Media only"}
             </span>

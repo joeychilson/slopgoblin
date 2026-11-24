@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { addsContext, decide, questionKey } from "./decisions.ts";
+import { DecisionError, addsContext, decide, questionKey } from "./decisions.ts";
 import type { PostContent } from "./post.ts";
 
 const post = (over: Partial<PostContent> = {}): PostContent => ({
@@ -11,9 +11,15 @@ const post = (over: Partial<PostContent> = {}): PostContent => ({
 describe("addsContext", () => {
   const note = { text: "Made with AI.", rated: false };
   const reply = post({ replyTo: { handle: "parent", text: "Hi" } });
+  const img1 = "https://pbs.twimg.com/media/a.jpg";
+  const img2 = "https://pbs.twimg.com/media/b.jpg";
+  const img3 = "https://pbs.twimg.com/media/c.jpg";
 
-  it("is true for a parent, a note or a note's rating the post was judged without", () => {
+  it("is true for a parent, images, text, note or note rating the post was judged without", () => {
     expect(addsContext(reply, post())).toBe(true);
+    expect(addsContext(post({ images: [img1] }), post())).toBe(true);
+    expect(addsContext(post({ images: [img1, img2] }), post({ images: [img1] }))).toBe(true);
+    expect(addsContext(post({ text: "Now loaded" }), post({ text: "" }))).toBe(true);
     expect(addsContext(post({ readerNote: note }), post())).toBe(true);
     expect(
       addsContext(post({ readerNote: { ...note, rated: true } }), post({ readerNote: note })),
@@ -24,17 +30,21 @@ describe("addsContext", () => {
     );
   });
 
-  it("is false for the same or less", () => {
+  it("is false for the same, less, or images beyond the two sent", () => {
     expect(addsContext(reply, reply)).toBe(false);
     expect(addsContext(post(), reply)).toBe(false);
+    expect(addsContext(post({ images: [img1, img2, img3] }), post({ images: [img1, img2] }))).toBe(
+      false,
+    );
   });
 });
 
 describe("questionKey", () => {
-  it("changes once the post a reply or a thread post follows turns up, so it's asked again", () => {
+  it("changes when parent context or image count changes, so cached scores are re-asked", () => {
     const alone = questionKey(post());
     expect(questionKey(post({ replyTo: { handle: "other", text: "Hi" } }))).not.toBe(alone);
     expect(questionKey(post({ replyTo: { handle: "Someone", text: "Part one" } }))).not.toBe(alone);
+    expect(questionKey(post({ images: ["https://pbs.twimg.com/media/a.jpg"] }))).not.toBe(alone);
   });
 });
 
@@ -67,5 +77,15 @@ describe("decide", () => {
     const reply = await decide("key", post({ replyTo: { handle: "other", text: "Part one" } }));
     expect(thread.scores.reply_spam).toBeUndefined();
     expect(reply.scores.reply_spam).toBe(0.9);
+  });
+
+  it("treats a 200 response with prompt_feedback.block_reason as blocked", async () => {
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ prompt_feedback: { block_reason: "safety" } }),
+    );
+    await expect(decide("key", post())).rejects.toMatchObject({
+      name: "Error",
+      kind: "blocked",
+    } satisfies Partial<DecisionError>);
   });
 });

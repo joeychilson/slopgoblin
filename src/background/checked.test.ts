@@ -54,4 +54,39 @@ describe("recordChecked", () => {
 
     expect(await checkedPosts()).toEqual([{ ...first, notSlop: true }]);
   });
+
+  it("serializes concurrent recordChecked and updateChecked writes", async () => {
+    const session: Record<string, unknown> = {};
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+    vi.stubGlobal("chrome", {
+      storage: {
+        session: {
+          get: async () => structuredClone(session),
+          set: async (items: Record<string, unknown>) => {
+            await tick();
+            Object.assign(session, structuredClone(items));
+          },
+          remove: async (keys: string[]) => {
+            for (const key of keys) delete session[key];
+          },
+        },
+      },
+    });
+
+    const { checkedPosts, recordChecked, updateChecked } = await import("./checked.ts");
+    const post: CheckedPost = {
+      id: "x:2",
+      url: "https://x.com/rager/status/2",
+      name: "Rager",
+      handle: "rager",
+      text: "Junk",
+      scores: { ragebait: 0.9 },
+      labels: [],
+      notSlop: false,
+      at: 100,
+    };
+
+    await Promise.all([recordChecked([post]), updateChecked("x:2", { notSlop: true })]);
+    expect(await checkedPosts()).toEqual([{ ...post, notSlop: true }]);
+  });
 });

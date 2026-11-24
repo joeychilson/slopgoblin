@@ -1,5 +1,5 @@
 import { DecisionError, decide, questionKey, type Scores } from "../core/decisions.ts";
-import type { ClassifyResponse } from "../core/messages.ts";
+import type { ClassifyResponse, Priority } from "../core/messages.ts";
 import { REFUSED, needsScores } from "../core/policy.ts";
 import { isReply, type Post } from "../core/post.ts";
 import { loadSettings } from "../core/settings.ts";
@@ -7,18 +7,24 @@ import { store, thisMonth, type ServiceStatus } from "../core/storage.ts";
 import { getEntry, putEntry } from "./cache.ts";
 
 const CONCURRENCY = 4;
-/**
- * A post that waited this long for its turn has most likely been scrolled past, so it isn't
- * sent. Its tab asks again if it's still on the page.
- */
+/** Posts queued this long were likely scrolled past; tabs ask again if still visible. */
 const STALE_MS = 30_000;
+/** Only bump `seen` in IndexedDB once a day to avoid writing on every cache hit. */
+const TOUCH_MS = 864e5;
+/** Stagger workers waking from a rate limit so one probes first instead of all four slamming 429. */
+const RESUME_STAGGER_MS = 200;
+
+interface Waiter {
+  priority: Priority;
+  resolve: () => void;
+}
 
 let apiKey: string | undefined;
 let keyRejected = false;
 let pausedUntil = 0;
 const paused = new Set<() => void>();
 let active = 0;
-const waiting: (() => void)[] = [];
+const waiting: Waiter[] = [];
 const inflight = new Map<string, Promise<ClassifyResponse>>();
 
 /** `isNew` is false when a restarted worker loads the key it already had, so the status stands. */
@@ -26,23 +32,22 @@ export function setApiKey(key: string | undefined, isNew: boolean) {
   apiKey = key;
   keyRejected = false;
   if (!isNew) return;
-  // The old key's rate limit isn't this one's.
   pausedUntil = 0;
   wakePaused();
   void setStatus({ kind: "ok" });
 }
 
-/**
- * Scores a post, from cache when possible. Concurrent calls for one post share a request, unless
- * they'd ask a different question: one tab can show the post a reply answers, another not.
- */
-export function classify(post: Post, cachedOnly: boolean): Promise<ClassifyResponse> {
+export function classify(
+  post: Post,
+  cachedOnly: boolean,
+  priority: Priority = 0,
+): Promise<ClassifyResponse> {
   const key = questionKey(post);
-  if (cachedOnly) return run(post, key, true);
+  if (cachedOnly) return run(post, key, true, priority);
   const asking = `${post.id} ${key}`;
   let pending = inflight.get(asking);
   if (!pending) {
-    pending = run(post, key, false).finally(() => inflight.delete(asking));
+    pending = run(post, key, false, priority).finally(() => inflight.delete(asking));
     inflight.set(asking, pending);
   }
   return pending;
@@ -53,34 +58,48 @@ export async function setNotSlop(id: string, notSlop: boolean) {
   if (entry) await putEntry({ ...entry, notSlop });
 }
 
-async function run(post: Post, key: string, cachedOnly: boolean): Promise<ClassifyResponse> {
+async function run(
+  post: Post,
+  key: string,
+  cachedOnly: boolean,
+  priority: Priority,
+): Promise<ClassifyResponse> {
   let entry = await getEntry(post.id);
-  if (entry?.key !== key) {
-    if (!apiKey || keyRejected) return { needsKey: true };
-    if (cachedOnly) return { uncached: true };
-    const answer = await ask(post);
-    if (answer === "unkeyed") return { needsKey: true };
-    if (answer === "unavailable") return { unavailable: true };
-    const scores = answer === "blocked" ? REFUSED : answer;
-    // Read again: the reader may have let the post through while it waited for an answer.
-    const { notSlop } = (await getEntry(post.id)) ?? {};
-    entry = { id: post.id, key, scores, notSlop, seen: 0 };
+  const now = Date.now();
+  if (entry?.key === key) {
+    if (now - entry.seen > TOUCH_MS) void putEntry({ ...entry, seen: now }).catch(() => {});
+    return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
   }
-  await putEntry({ ...entry, seen: Date.now() });
+
+  if (!apiKey || keyRejected) return { needsKey: true };
+  if (cachedOnly) return { uncached: true };
+
+  const answer = await ask(post, priority);
+  if (answer === "unkeyed") return { needsKey: true };
+  if (answer === "unavailable") return { unavailable: true };
+  const scores = answer === "blocked" ? REFUSED : answer;
+  // Re-read in case the reader let the post through while this request was in flight.
+  const { notSlop } = (await getEntry(post.id)) ?? {};
+  entry = { id: post.id, key, scores, notSlop, seen: Date.now() };
+  await putEntry(entry);
   return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
 }
 
-async function ask(post: Post): Promise<Scores | "blocked" | "unkeyed" | "unavailable"> {
+async function ask(
+  post: Post,
+  priority: Priority,
+): Promise<Scores | "blocked" | "unkeyed" | "unavailable"> {
   const queued = Date.now();
-  await acquire();
+  await acquire(priority);
   try {
     if (Date.now() - queued > STALE_MS) return "unavailable";
     const asked = { labels: post.labels, handle: post.author.handle, isReply: isReply(post) };
     let withImages = true;
-    let failures = 0;
-    for (let attempt = 0; attempt < 6; attempt++) {
+    let transient = 0;
+    let rateHits = 0;
+
+    for (;;) {
       while (pausedUntil > Date.now() && apiKey && !keyRejected) await waitPause();
-      // Filtering may have been switched off, or the author marked "Always show", meanwhile.
       const settings = await loadSettings();
       if (!apiKey || keyRejected) return "unkeyed";
       if (!needsScores(asked, settings)) return "unavailable";
@@ -95,6 +114,7 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unkeyed" | "unavai
         switch (error.kind) {
           case "rate":
             if (apiKey !== usedKey) continue;
+            if (++rateHits > 4) return "unavailable";
             pausedUntil = Math.max(pausedUntil, Date.now() + error.retryAfterMs);
             void setStatus({ kind: "rate-limited", until: pausedUntil });
             continue;
@@ -102,13 +122,12 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unkeyed" | "unavai
             if (!withImages) return "unavailable";
             withImages = false;
             continue;
-          // Counted apart from the attempts, which rate limits and image errors use up too.
           case "transient":
-            if (++failures === 3) {
+            if (++transient === 3) {
               void setStatus({ kind: "offline" });
               return "unavailable";
             }
-            await sleep(1000 * 3 ** (failures - 1));
+            await sleep(1000 * 3 ** (transient - 1));
             continue;
           case "blocked":
             return "blocked";
@@ -124,16 +143,14 @@ async function ask(post: Post): Promise<Scores | "blocked" | "unkeyed" | "unavai
         }
       }
     }
-    return "unavailable";
   } finally {
     release();
   }
 }
 
-/** Waits out the rate-limit pause, waking early if the key changes or is rejected. */
 function waitPause() {
   return new Promise<void>((resolve) => {
-    const ms = pausedUntil - Date.now();
+    const ms = pausedUntil - Date.now() + paused.size * RESUME_STAGGER_MS;
     if (ms <= 0) return resolve();
     const wake = () => {
       clearTimeout(timer);
@@ -149,19 +166,29 @@ function wakePaused() {
   for (const wake of paused) wake();
 }
 
-async function acquire() {
+async function acquire(priority: Priority) {
   if (active < CONCURRENCY) {
     active++;
     return;
   }
-  await new Promise<void>((resolve) => waiting.push(resolve));
+  await new Promise<void>((resolve) => waiting.push({ priority, resolve }));
 }
 
 function release() {
-  // Newest first: after a rate-limit pause, the posts on screen now matter more than the backlog.
-  const next = waiting.pop();
-  if (next) next();
-  else active--;
+  // Highest priority (visible posts) first; within a tier, newest first so active scrolling wins.
+  let best = -1;
+  for (let i = waiting.length - 1; i >= 0; i--) {
+    if (best === -1 || waiting[i]!.priority < waiting[best]!.priority) {
+      best = i;
+      if (waiting[best]!.priority === 0) break;
+    }
+  }
+  if (best !== -1) {
+    const [next] = waiting.splice(best, 1);
+    next!.resolve();
+  } else {
+    active--;
+  }
 }
 
 let lastStatus = "";
@@ -175,24 +202,27 @@ async function setStatus(status: ServiceStatus) {
 
 let unsaved = { posts: 0, tokens: 0 };
 let saving: ReturnType<typeof setTimeout> | undefined;
+let usageQueue: Promise<void> = Promise.resolve();
 
-/** Adds a request to this month's tally, written in batches. */
 function recordUsage(tokens: number) {
   unsaved.posts++;
   unsaved.tokens += tokens;
-  saving ??= setTimeout(async () => {
+  saving ??= setTimeout(() => {
     saving = undefined;
     const added = unsaved;
     unsaved = { posts: 0, tokens: 0 };
-    const month = thisMonth();
-    const saved = await store.usage.get();
-    const before = saved?.month === month ? saved : { posts: 0, tokens: 0 };
-    await store.usage.set({
-      month,
-      posts: before.posts + added.posts,
-      tokens: before.tokens + added.tokens,
-    });
-  }, 2000);
+    const write = async () => {
+      const month = thisMonth();
+      const saved = await store.usage.get();
+      const before = saved?.month === month ? saved : { posts: 0, tokens: 0 };
+      await store.usage.set({
+        month,
+        posts: before.posts + added.posts,
+        tokens: before.tokens + added.tokens,
+      });
+    };
+    usageQueue = usageQueue.then(write, write).catch(() => {});
+  }, 1000);
 }
 
 function sleep(ms: number) {

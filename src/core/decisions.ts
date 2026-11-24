@@ -4,23 +4,19 @@ import { ASKED, FINE, QUESTION, type CategoryId } from "./taxonomy.ts";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/decisions";
 const MODEL = "gemini-decision-1";
 /** Bump when `describePost` changes meaningfully, so cached scores get recomputed. */
-const INPUT_VERSION = 4;
+const INPUT_VERSION = 5;
 const MAX_IMAGES = 2;
 const TIMEOUT_MS = 30_000;
 /** Input tokens are all the Decisions API bills for. */
 export const USD_PER_MILLION_TOKENS = 0.1;
 
-/** The probability a post belongs to each category. What's left over is the chance it's fine. */
 export type Scores = Partial<Record<CategoryId, number>>;
 
-const optionsFor = (isReply: boolean) => ASKED.filter((c) => isReply || !("repliesOnly" in c));
+const optionsFor = (reply: boolean) => ASKED.filter((c) => reply || !("repliesOnly" in c));
 
-/**
- * The question a post or a reply is asked, in the API's own form. One question only: questions
- * in a request do sway each other's answers, whatever the docs say.
- */
-function questionsFor(isReply: boolean) {
-  const options = optionsFor(isReply);
+// One question only: multiple questions in one request sway each other's answers.
+function questionsFor(reply: boolean) {
+  const options = optionsFor(reply);
   return {
     kind: {
       type: "choice",
@@ -31,31 +27,31 @@ function questionsFor(isReply: boolean) {
 }
 
 const QUESTIONS = { post: questionsFor(false), reply: questionsFor(true) };
-// Everything the model is asked, down to the option keys it reads, so no change can leave stale
-// answers behind.
 const keyFor = (questions: object) => hash(JSON.stringify([MODEL, INPUT_VERSION, questions]));
 const POST_KEY = keyFor(QUESTIONS.post);
 const REPLY_KEY = keyFor(QUESTIONS.reply);
 const THREAD_KEY = `${POST_KEY}.thread`;
 
+const imageCount = (post: PostContent) => Math.min(post.images?.length ?? 0, MAX_IMAGES);
+
 /**
- * Fingerprints the question a post gets asked. A cached answer under another key is stale.
- * Whether the post it follows came with it is part of it, as are reader notes: either can turn
- * up after a post was first judged.
+ * Fingerprints the question and late-arriving context a post gets judged on, so cached scores
+ * are asked again when wording, parent post, images, or community notes change.
  */
 export function questionKey(post: PostContent) {
-  const key = isReply(post) ? REPLY_KEY : post.replyTo ? THREAD_KEY : POST_KEY;
+  let key = isReply(post) ? REPLY_KEY : post.replyTo ? THREAD_KEY : POST_KEY;
+  const images = imageCount(post);
+  if (images) key += `.i${images}`;
   const notes = [post.readerNote, post.quote?.readerNote].flatMap((n) =>
     n ? [n.rated, n.text] : [],
   );
   return notes.length ? `${key}.${hash(notes.join("|"))}` : key;
 }
 
-/**
- * Whether `next` shows a post with more than it was judged on as `prev`: the post it replies to,
- * a note, or a note's rating. Then it's worth asking again; losing one isn't.
- */
+/** Whether `next` carries new context (`replyTo`, images, text, notes) worth re-judging on. */
 export function addsContext(next: PostContent, prev: PostContent) {
+  if (imageCount(next) > imageCount(prev)) return true;
+  if (next.text && !prev.text) return true;
   const context = (post: PostContent) => [
     post.replyTo,
     post.readerNote,
@@ -116,11 +112,17 @@ export async function decide(
   }
   if (!res.ok) throw await toDecisionError(res, images.length > 0);
 
-  // A post Google's safety filters won't read comes back as an error, in `toDecisionError`.
   const json = (await res.json()) as {
     answers?: { kind?: { probabilities?: Record<string, number> } };
+    prompt_feedback?: { block_reason?: string; block_reason_message?: string };
     usage?: { total_input_tokens?: number };
   };
+  if (json.prompt_feedback?.block_reason) {
+    throw new DecisionError(
+      "blocked",
+      json.prompt_feedback.block_reason_message ?? json.prompt_feedback.block_reason,
+    );
+  }
   const probabilities = json.answers?.kind?.probabilities;
   if (!probabilities) throw new DecisionError("fatal", "Gemini gave no answer");
   return {
@@ -129,7 +131,7 @@ export async function decide(
   };
 }
 
-function describePost(post: PostContent, imageCount: number): string {
+function describePost(post: PostContent, images: number): string {
   const lines = [
     // Saying up front that this is content to be judged also keeps Google's word filter from
     // refusing posts over a slur they contain.
@@ -155,12 +157,12 @@ function describePost(post: PostContent, imageCount: number): string {
       lines.push(
         ...describeNote(quote.readerNote, "the quoted post"),
         // Without this a post gets judged apart from the fake it passes along.
-        "A post that repeats, reacts to or builds on what a note calls false, fake, AI-made or bait is junk of that kind too, unless it corrects the quoted post or calls it out. A note that only adds context or fixes a detail changes nothing.",
+        "This post quotes a post whose community note calls it false, fake, AI-made or bait. Unless it questions, corrects or calls out the quoted post, judge it as junk of the same kind (not fine), even if it only reacts, jokes, or comments on the false premise. A note that only adds neutral context or fixes a detail changes nothing.",
       );
     }
   }
   if (post.link) lines.push(`Link card: ${defuse(clip(post.link, 200))}`);
-  if (imageCount) lines.push(`Attached image${imageCount > 1 ? "s" : ""} follow.`);
+  if (images) lines.push(`Attached image${images > 1 ? "s" : ""} follow.`);
   return lines.join("\n");
 }
 
@@ -172,15 +174,19 @@ function describeNote(note: ReaderNote, target: string) {
 }
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
-/** Text from the site with anything shaped like a tag defused, so it can't close or fake ours. */
+// Defuse tag-like sequences so site text can't close or forge our wrapper tags.
 const defuse = (text: string) => text.replace(/<(\s*\/?\s*[a-z][^<>]*)>/gi, "‹$1›");
 const tag = (name: string, text: string, max: number) =>
   `<${name}>\n${defuse(clip(text, max))}\n</${name}>`;
 
 function imageMime(uri: string): string {
-  const url = new URL(uri);
-  const ext = url.searchParams.get("format") ?? url.pathname.split(".").pop() ?? "";
-  if (ext === "png" || ext === "webp" || ext === "gif") return `image/${ext}`;
+  try {
+    const url = new URL(uri);
+    const ext = url.searchParams.get("format") ?? url.pathname.split(".").pop() ?? "";
+    if (ext === "png" || ext === "webp" || ext === "gif") return `image/${ext}`;
+  } catch {
+    // Fall back to jpeg on malformed URIs.
+  }
   return "image/jpeg";
 }
 
@@ -206,14 +212,20 @@ async function toDecisionError(res: Response, sentImages: boolean): Promise<Deci
   const code = typeof error.code === "string" ? error.code : "";
   const reasons = new Set(error.details?.map((d) => d.reason));
 
-  if (res.status === 401 || res.status === 403 || reasons.has("API_KEY_INVALID")) {
+  if (
+    res.status === 401 ||
+    res.status === 403 ||
+    reasons.has("API_KEY_INVALID") ||
+    reasons.has("API_KEY_EXPIRED")
+  ) {
     return new DecisionError("auth", message);
   }
   if (res.status === 429) {
-    const delay =
+    const raw =
       Number(res.headers.get("retry-after")) ||
       Number.parseFloat(error.details?.find((d) => d.retryDelay)?.retryDelay ?? "") ||
       20;
+    const delay = Math.min(Math.max(raw, 1), 300);
     return new DecisionError("rate", message, delay * 1000);
   }
   if (BLOCKED_CODES.has(code)) return new DecisionError("blocked", message);

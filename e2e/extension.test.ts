@@ -368,11 +368,60 @@ describe("on X", { timeout: 30_000 }, () => {
     }
   });
 
-  it("lets a post through from the side panel, in the tab too", async () => {
+  it("lets a post through from the side panel, in the tab too, and undoes it", async () => {
     await panel.click('.item:has-text("Growth Guru") .item-open');
     await panel.click('.item:has-text("Growth Guru") button:has-text("Not AI slop")');
     await shows(x, "slopper", "confirmed");
     await poll(() => panel.innerText(".hidden")).not.toContain("Growth Guru");
+    await poll(() => panel.innerText(".undo-bar")).toMatch(/won't be hidden again/);
+    await panel.click(".undo-bar .undo-link");
+    await shows(x, "slopper", "collapsed");
+    await poll(() => panel.innerText(".hidden")).toContain("Growth Guru");
+    // Let it through again so subsequent counts stay consistent.
+    await panel.click('.item:has-text("Growth Guru") .item-open');
+    await panel.click('.item:has-text("Growth Guru") button:has-text("Not AI slop")');
+    await shows(x, "slopper", "confirmed");
+  });
+
+  it("filters hidden posts by category in the side panel", async () => {
+    await panel.click('.filter-pill:has-text("Ragebait")');
+    await poll(() => panel.locator(".list .item").count()).toBe(1);
+    expect(await panel.innerText(".list")).toContain("Rage Farm");
+    await panel.click('.filter-pill:has-text("All")');
+    await poll(() => panel.locator(".list .item").count()).toBeGreaterThan(1);
+  });
+
+  it("re-checks a post when a lazy-loaded image arrives later", async () => {
+    const lazy: MockPost = {
+      id: "305",
+      handle: "lazyimg",
+      name: "Lazy Img",
+      text: "Look at this",
+    };
+    await append(x, cell(lazy));
+    await poll(() => m.sent.map(handleIn)).toContain("lazyimg");
+    const before = m.sent.length;
+    await x.locator(cellOf("lazyimg")).evaluate((el) => {
+      const img = document.createElement("img");
+      img.src = "https://pbs.twimg.com/media/lazy.jpg?format=jpg&name=small";
+      el.querySelector('[data-testid="tweetText"]')!.after(img);
+    });
+    await poll(() => m.sent.length).toBeGreaterThan(before);
+    expect(m.sent.at(-1)).toMatch(/Attached image/);
+  });
+
+  it("applies live follow and unfollow changes without reloading", async () => {
+    await m.ctx.route("https://x.com/i/api/1.1/friendships/*.json", (route) =>
+      route.fulfill({ json: { screen_name: "rager" } }),
+    );
+    await x.evaluate(() =>
+      fetch("https://x.com/i/api/1.1/friendships/create.json", { method: "POST" }),
+    );
+    await shows(x, "rager", "shown");
+    await x.evaluate(() =>
+      fetch("https://x.com/i/api/1.1/friendships/destroy.json", { method: "POST" }),
+    );
+    await shows(x, "rager", "collapsed");
   });
 
   it("chomps when a post is hidden with the side panel open", async () => {

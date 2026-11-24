@@ -611,6 +611,90 @@ code {
 }
 
 /* Rows start 12px in, so what's in them starts at 20 like everything else. */
+.undo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 16px;
+  animation: fade 220ms var(--glide);
+}
+
+.undo-link {
+  flex: none;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.undo-link:hover {
+  text-decoration: underline;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 2px -16px 10px;
+  padding: 0 20px;
+}
+
+.filters::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--well);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 180ms,
+    color 180ms;
+}
+
+.filter-pill:hover {
+  background: var(--well-strong);
+  color: var(--ink);
+}
+
+.filter-pill[aria-pressed="true"] {
+  background: var(--fill);
+  color: var(--on-fill);
+}
+
+.filter-pill span {
+  opacity: 0.68;
+  font-variant-numeric: tabular-nums;
+}
+
+.load-more {
+  display: flex;
+  margin: 12px auto 0;
+}
+
 .list {
   margin: 0 -4px;
 }

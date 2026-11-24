@@ -28,10 +28,6 @@ interface Settling {
   item: HiddenPost;
   action: LetThrough;
   leaving: boolean;
-  /** Remaining ms before folding away, updated when paused on hover. */
-  remaining: number;
-  /** Timestamp when the current countdown slice started; undefined while hovered. */
-  resumedAt?: number;
   /** Another post by an author just marked "Always show": it only folds away. */
   quiet?: boolean;
   /** Shown as hidden again while the list catches up. */
@@ -92,6 +88,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     if (choosing && !canFilter) setChoosing(false);
   }, [filter, active, choosing, canFilter]);
 
+  // The kinds close on a click anywhere else, like a menu.
   useEffect(() => {
     if (!choosing) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -157,56 +154,16 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
       action === "trust"
         ? rows.filter((o) => o.post.id !== id && o.post.handle.toLowerCase() === handle)
         : [];
-    const now = Date.now();
     setOpen(null);
     setSettling((prev) => {
-      const next = new Map(prev).set(id, {
-        item,
-        action,
-        leaving: false,
-        remaining: SETTLE_MS,
-        resumedAt: now,
-      });
+      const next = new Map(prev).set(id, { item, action, leaving: false });
       for (const other of others) {
-        next.set(other.post.id, {
-          item: other,
-          action,
-          leaving: true,
-          remaining: 0,
-          quiet: true,
-        });
+        next.set(other.post.id, { item: other, action, leaving: true, quiet: true });
       }
       return next;
     });
     later(id, SETTLE_MS, () => leave(id));
     for (const other of others) later(other.post.id, LEAVE_MS, () => drop(other.post.id));
-  }
-
-  function pauseSettle(id: string) {
-    const s = settling.get(id);
-    if (!s || s.leaving || s.undone || s.quiet || s.resumedAt === undefined) return;
-    clearTimeout(timers.current.get(id));
-    timers.current.delete(id);
-    const remaining = Math.max(0, s.remaining - (Date.now() - s.resumedAt));
-    setSettling((prev) => {
-      const current = prev.get(id);
-      return current
-        ? new Map(prev).set(id, { ...current, remaining, resumedAt: undefined })
-        : prev;
-    });
-  }
-
-  function resumeSettle(id: string) {
-    const s = settling.get(id);
-    if (!s || s.leaving || s.undone || s.quiet || s.resumedAt !== undefined) return;
-    const wait = Math.max(400, s.remaining);
-    setSettling((prev) => {
-      const current = prev.get(id);
-      return current
-        ? new Map(prev).set(id, { ...current, remaining: wait, resumedAt: Date.now() })
-        : prev;
-    });
-    later(id, wait, () => leave(id));
   }
 
   function leave(id: string) {
@@ -235,9 +192,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     } else {
       void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
     }
-    setSettling((prev) =>
-      new Map(prev).set(id, { ...settled, undone: true, leaving: false, resumedAt: undefined }),
-    );
+    setSettling((prev) => new Map(prev).set(id, { ...settled, undone: true, leaving: false }));
     later(id, RESTORE_MS, () => drop(id));
     // Focus stays on the row, now hidden again.
     requestAnimationFrame(() =>
@@ -245,11 +200,10 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     );
   }
 
+  /** One thing open at a time: the kinds, or a post. */
   function toggleKinds() {
-    setChoosing((was) => {
-      if (!was) setOpen(null);
-      return !was;
-    });
+    if (!choosing) setOpen(null);
+    setChoosing(!choosing);
   }
 
   function pick(next: CategoryId | "") {
@@ -270,7 +224,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
             <button
               ref={title}
               type="button"
-              class={active ? "list-title is-filtered" : "list-title"}
+              class="list-title"
               aria-expanded={choosing}
               aria-controls={kindsId}
               title="Show one kind"
@@ -290,7 +244,6 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
               <span key={heading} class="list-title-text">
                 {heading}
               </span>
-              {active && <span class="list-title-count">{shown.length}</span>}
               <Icon d={ICONS.chevron} size={16} weight={2.4} />
             </button>
           ) : (
@@ -339,6 +292,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
           class="list"
           onKeyDown={(event) => {
             if (event.key !== "Escape" || !open) return;
+            // Focus goes back to the post, not off the page with its closing actions.
             const closing = open;
             setOpen(null);
             requestAnimationFrame(() =>
@@ -351,17 +305,14 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
           {visible.map((item) => {
             const { id } = item.post;
             const settled = settling.get(id);
-            const activeSettled =
-              settled && !settled.undone && !settled.quiet ? settled : undefined;
             return (
               <Item
                 key={id}
                 item={item}
                 tabId={tabId}
-                filtered={Boolean(active)}
                 order={firstOrder.current!.get(id) ?? -1}
                 open={open === id}
-                settled={activeSettled?.action}
+                settled={settled && !settled.undone && !settled.quiet ? settled.action : undefined}
                 leaving={Boolean(settled?.leaving)}
                 onToggle={(next) => {
                   if (next) setChoosing(false);
@@ -369,7 +320,6 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
                 }}
                 onLetThrough={(action) => letThrough(item, action)}
                 onUndo={() => undo(id)}
-                onHover={(inside) => (inside ? pauseSettle(id) : resumeSettle(id))}
               />
             );
           })}
@@ -438,7 +388,6 @@ function Peek({ on }: { on: boolean }) {
 function Item(props: {
   item: HiddenPost;
   tabId?: number;
-  filtered: boolean;
   order: number;
   open: boolean;
   settled?: LetThrough;
@@ -446,9 +395,8 @@ function Item(props: {
   onToggle: (open: boolean) => void;
   onLetThrough: (action: LetThrough) => void;
   onUndo: () => void;
-  onHover: (inside: boolean) => void;
 }) {
-  const { item, tabId, filtered, open, settled, leaving, onToggle } = props;
+  const { item, tabId, open, settled, leaving, onToggle } = props;
   const { post, verdict } = item;
   const [order] = useState(props.order);
   const row = useRef<HTMLLIElement>(null);
@@ -456,8 +404,6 @@ function Item(props: {
   const { label, midSentence, possibly } = reason(verdict);
   const name = displayName(post);
   const actionsId = useId();
-  // When filtered to one kind, skip echoing the firm category name on every row.
-  const showWhy = !filtered || possibly;
 
   useEffect(() => {
     if (!open) return;
@@ -483,8 +429,6 @@ function Item(props: {
       class={classes}
       data-id={post.id}
       style={order >= 0 ? `--order: ${order}` : undefined}
-      onMouseEnter={settled ? () => props.onHover(true) : undefined}
-      onMouseLeave={settled ? () => props.onHover(false) : undefined}
     >
       <div class="item-inner">
         {settled ? (
@@ -502,11 +446,9 @@ function Item(props: {
               <span class="item-body">
                 <span class="item-line">
                   <span class="item-name">{name}</span>
-                  {showWhy && (
-                    <span class={verdict.labeled || possibly ? "item-why is-quiet" : "item-why"}>
-                      {possibly ? `Possibly ${midSentence}` : label}
-                    </span>
-                  )}
+                  <span class={verdict.labeled || possibly ? "item-why is-quiet" : "item-why"}>
+                    {possibly ? `Possibly ${midSentence}` : label}
+                  </span>
                 </span>
                 <span class={isNsfw || !post.text ? "item-text is-empty" : "item-text"}>
                   {isNsfw ? "Text hidden" : post.text || "Media only"}
@@ -550,6 +492,7 @@ function Item(props: {
   );
 }
 
+/** The author's photo; their initial when there's none, or it doesn't load. */
 function Avatar({ post, nsfw }: { post: CheckedPost; nsfw: boolean }) {
   const [broken, setBroken] = useState(false);
   const initial = displayName(post).replace(/^@/, "").trim().charAt(0).toUpperCase();

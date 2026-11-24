@@ -34,7 +34,6 @@
   --faint: light-dark(#949f87, #6c775f);
   --well: light-dark(rgb(38 52 18 / 0.07), rgb(255 255 255 / 0.06));
   --well-strong: light-dark(rgb(38 52 18 / 0.11), rgb(255 255 255 / 0.1));
-  --surface: light-dark(#fbfaf3, rgb(255 255 255 / 0.09));
   --hover: light-dark(rgb(38 52 18 / 0.045), rgb(255 255 255 / 0.04));
   --accent: light-dark(#4c7018, #a6c564);
   --fill: light-dark(#547b1d, #93b84e);
@@ -438,29 +437,11 @@ code {
 }
 
 .caption span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   color: var(--muted);
   font-size: 12px;
   line-height: 16px;
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-.caption span.is-busy::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.3;
-  }
 }
 
 .message {
@@ -634,6 +615,7 @@ code {
   font: 500 11px/1 var(--body);
 }
 
+/* A narrow panel keeps the title whole before the shortcut. */
 @media (max-width: 325px) {
   .peek kbd {
     display: none;
@@ -644,7 +626,7 @@ code {
 .list-title {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   max-width: 100%;
   padding: 0;
   border: 0;
@@ -661,23 +643,12 @@ code {
   animation: fade 260ms var(--glide);
 }
 
-.list-title-count {
-  flex: none;
-  color: var(--muted);
-  font: 600 13px/1 var(--body);
-  font-variant-numeric: tabular-nums;
-}
-
 .list-title .icon {
   flex: none;
   color: var(--muted);
   transition:
     color 180ms,
     transform 320ms var(--spring);
-}
-
-.list-title.is-filtered .icon {
-  color: var(--accent);
 }
 
 .list-title:hover .icon {
@@ -688,8 +659,9 @@ code {
   transform: rotate(180deg);
 }
 
-/* The kinds unfold in a recessed well between the title and the list, so the picker reads
-   distinct from the posts below without floating in a card. */
+/* The kinds, as rows like "What to hide" in Settings. The one shown is filled, like an open
+   post, and each count ends where a post's reason does. The box that clips while they open is
+   as wide as the rows, so their rounded ends show. */
 .kinds {
   margin: 0 -4px;
 }
@@ -697,18 +669,15 @@ code {
 .kinds .rows {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 4px 0 12px;
-  padding: 4px;
-  border-radius: 16px;
-  background: var(--well);
+  gap: 4px;
+  margin: 0;
+  padding-bottom: 8px;
 }
 
 .kinds .row {
   width: 100%;
-  padding: 7px 10px;
+  padding: 7px 8px;
   border: 0;
-  border-radius: 12px;
   background: none;
   text-align: left;
 }
@@ -719,7 +688,7 @@ code {
 }
 
 .kinds .row[aria-pressed="true"] {
-  background: var(--surface);
+  background: var(--well);
 }
 
 .kinds .row-count {
@@ -728,11 +697,6 @@ code {
 
 .kinds .row[aria-pressed="true"] .row-title {
   color: var(--ink);
-  font-weight: 600;
-}
-
-.kinds .row[aria-pressed="true"] .row-count {
-  color: var(--accent);
   font-weight: 600;
 }
 
@@ -831,7 +795,6 @@ code {
 
 .avatar-initial {
   font: 700 13px/1 var(--display);
-  color: var(--muted);
 }
 
 .avatar img {
@@ -904,39 +867,8 @@ code {
   font-style: italic;
 }
 
-/* A row just let through keeps its face, name, and quiet well tint while it waits to fold away.
-   A hairline drains along the bottom edge and pauses on hover. */
-.item.is-settled .item-inner {
-  position: relative;
-  background: var(--well);
-}
-
-.item-settled {
-  position: relative;
-}
-
-.item-settled::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  background: color-mix(in srgb, var(--accent) 42%, transparent);
-  transform-origin: left;
-  animation: drain 5000ms linear forwards;
-}
-
-.item.is-settled:hover .item-settled::after {
-  animation-play-state: paused;
-}
-
-@keyframes drain {
-  to {
-    transform: scaleX(0);
-  }
-}
-
+/* A row just let through keeps its face and name. Undo is where the reason was, and the text
+   says what happened, until the row folds away. */
 .item-settled .item-body {
   animation: fade 260ms var(--glide);
 }
@@ -1437,10 +1369,6 @@ code {
   ::after {
     animation: none !important;
     transition: none !important;
-  }
-
-  .item-settled::after {
-    display: none;
   }
 
   /* The z's still say it's asleep, standing where they'd drift. */

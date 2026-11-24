@@ -390,11 +390,11 @@ describe("on X", { timeout: 30_000 }, () => {
     await panel.click('.kinds .row:has-text("Ragebait")');
     await poll(() => panel.locator(".list .item").count()).toBe(1);
     expect(await panel.innerText(".list")).toContain("Rage Farm");
-    expect(await panel.innerText(".list-title-text")).toBe("Ragebait");
+    expect(await panel.innerText(".list-title")).toBe("Ragebait");
     await panel.click(".list-title");
     await panel.click('.kinds .row:has-text("All")');
     await poll(() => panel.locator(".list .item").count()).toBeGreaterThan(1);
-    expect(await panel.innerText(".list-title-text")).toBe("Hidden posts");
+    expect(await panel.innerText(".list-title")).toBe("Hidden posts");
   });
 
   it("re-checks a post when a lazy-loaded image arrives later", async () => {

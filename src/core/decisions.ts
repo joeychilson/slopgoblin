@@ -32,18 +32,34 @@ const POST_KEY = keyFor(QUESTIONS.post);
 const REPLY_KEY = keyFor(QUESTIONS.reply);
 const THREAD_KEY = `${POST_KEY}.thread`;
 
+const imageCount = (post: PostContent) => Math.min(post.images?.length ?? 0, MAX_IMAGES);
+
 /**
- * Fingerprints the question and the late-arriving context a post is judged on, so it's asked
- * again when the wording, its parent post, its images or its community notes change.
+ * Fingerprints the question and late-arriving context a post gets judged on, so cached scores
+ * are asked again when wording, parent post, images, or community notes change.
  */
 export function questionKey(post: PostContent) {
   let key = isReply(post) ? REPLY_KEY : post.replyTo ? THREAD_KEY : POST_KEY;
-  const images = Math.min(post.images?.length ?? 0, MAX_IMAGES);
+  const images = imageCount(post);
   if (images) key += `.i${images}`;
   const notes = [post.readerNote, post.quote?.readerNote].flatMap((n) =>
     n ? [n.rated, n.text] : [],
   );
   return notes.length ? `${key}.${hash(notes.join("|"))}` : key;
+}
+
+/** Whether `next` carries new context (`replyTo`, images, notes) worth re-judging on. */
+export function addsContext(next: PostContent, prev: PostContent) {
+  if (imageCount(next) > imageCount(prev)) return true;
+  const context = (post: PostContent) => [
+    post.replyTo,
+    post.readerNote,
+    post.readerNote?.rated,
+    post.quote?.readerNote,
+    post.quote?.readerNote?.rated,
+  ];
+  const before = context(prev);
+  return context(next).some((part, i) => part && !before[i]);
 }
 
 type DecisionErrorKind = "auth" | "rate" | "blocked" | "media" | "transient" | "fatal";
@@ -97,8 +113,15 @@ export async function decide(
 
   const json = (await res.json()) as {
     answers?: { kind?: { probabilities?: Record<string, number> } };
+    prompt_feedback?: { block_reason?: string; block_reason_message?: string };
     usage?: { total_input_tokens?: number };
   };
+  if (json.prompt_feedback?.block_reason) {
+    throw new DecisionError(
+      "blocked",
+      json.prompt_feedback.block_reason_message ?? json.prompt_feedback.block_reason,
+    );
+  }
   const probabilities = json.answers?.kind?.probabilities;
   if (!probabilities) throw new DecisionError("fatal", "Gemini gave no answer");
   return {

@@ -21,14 +21,19 @@ interface Waiter {
   resolve: () => void;
 }
 
+interface Inflight {
+  id: string;
+  priority: Priority;
+  promise: Promise<ClassifyResponse>;
+}
+
 let apiKey: string | undefined;
 let keyRejected = false;
 let pausedUntil = 0;
 const paused = new Set<() => void>();
 let active = 0;
 const waiting: Waiter[] = [];
-/** Requests under way, by post and question, so tabs showing the same post share one. */
-const inflight = new Map<string, Promise<ClassifyResponse>>();
+const inflight = new Map<string, Inflight>();
 
 /** `isNew` is false when a restarted worker loads the key it already had, so the status stands. */
 export function setApiKey(key: string | undefined, isNew: boolean) {
@@ -40,36 +45,35 @@ export function setApiKey(key: string | undefined, isNew: boolean) {
   void setStatus({ kind: "ok" });
 }
 
-export async function classify(
+export function classify(
   post: Post,
   cachedOnly: boolean,
   priority: Priority = 0,
 ): Promise<ClassifyResponse> {
   const key = questionKey(post);
-  const entry = await getEntry(post.id);
-  if (entry?.key === key) {
-    const now = Date.now();
-    if (now - entry.seen > TOUCH_MS) void putEntry({ ...entry, seen: now }).catch(() => {});
-    return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
-  }
-  if (!apiKey || keyRejected) return { needsKey: true };
-  if (cachedOnly) return { uncached: true };
-
+  if (cachedOnly) return run(post, key, true, () => priority);
   const asking = `${post.id} ${key}`;
-  let answer = inflight.get(asking);
-  if (answer) {
-    if (priority === 0) prioritize([post.id]);
-  } else {
-    // `ask` joins the queue right away, so `prioritize` can find it from here on.
-    answer = answerFor(post, key, priority).finally(() => inflight.delete(asking));
-    inflight.set(asking, answer);
+  let entry = inflight.get(asking);
+  if (!entry) {
+    const promise = run(post, key, false, () => inflight.get(asking)?.priority ?? priority).finally(
+      () => inflight.delete(asking),
+    );
+    entry = { id: post.id, priority, promise };
+    inflight.set(asking, entry);
+  } else if (priority === 0) {
+    prioritize([post.id]);
   }
-  return answer;
+  return entry.promise;
 }
 
 /** Promotes queued posts that just entered the viewport ahead of off-screen lookahead. */
 export function prioritize(ids: string[]) {
+  if (!ids.length) return;
   const urgent = new Set(ids);
+  for (const entry of inflight.values()) {
+    if (urgent.has(entry.id)) entry.priority = 0;
+  }
+  if (!waiting.length) return;
   const now = Date.now();
   const promoted: Waiter[] = [];
   for (let i = waiting.length - 1; i >= 0; i--) {
@@ -87,15 +91,31 @@ export async function setNotSlop(id: string, notSlop: boolean) {
   if (entry) await putEntry({ ...entry, notSlop });
 }
 
-async function answerFor(post: Post, key: string, priority: Priority): Promise<ClassifyResponse> {
-  const answer = await ask(post, priority);
+async function run(
+  post: Post,
+  key: string,
+  cachedOnly: boolean,
+  priority: () => Priority,
+): Promise<ClassifyResponse> {
+  let entry = await getEntry(post.id);
+  const now = Date.now();
+  if (entry?.key === key) {
+    if (now - entry.seen > TOUCH_MS) void putEntry({ ...entry, seen: now }).catch(() => {});
+    return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
+  }
+
+  if (!apiKey || keyRejected) return { needsKey: true };
+  if (cachedOnly) return { uncached: true };
+
+  const answer = await ask(post, priority());
   if (answer === "unkeyed") return { needsKey: true };
   if (answer === "unavailable") return { unavailable: true };
   const scores = answer === "blocked" ? REFUSED : answer;
   // Re-read in case the reader let the post through while this request was in flight.
   const { notSlop } = (await getEntry(post.id)) ?? {};
-  await putEntry({ id: post.id, key, scores, notSlop, seen: Date.now() });
-  return { scores, notSlop: Boolean(notSlop) };
+  entry = { id: post.id, key, scores, notSlop, seen: Date.now() };
+  await putEntry(entry);
+  return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
 }
 
 async function ask(

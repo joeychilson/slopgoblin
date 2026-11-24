@@ -1,5 +1,5 @@
 import type { CheckedPost } from "../core/checked.ts";
-import { questionKey, type Scores } from "../core/decisions.ts";
+import { addsContext, type Scores } from "../core/decisions.ts";
 import type {
   ClassifyResponse,
   Priority,
@@ -197,12 +197,14 @@ class Feed {
     if (reread && this.absorb(t, reread)) this.askIfNear(t);
   }
 
-  /** Takes in a fresh read of a post. True when it changes what the model would be asked. */
+  /**
+   * Takes in a fresh read of a post. Only a gain counts, since X often reads a post again with
+   * less, such as after unmounting its parent. True when it should be asked about again.
+   */
   private absorb(t: Tracked, read: Post) {
     const merged = mergePost(t.post, read);
     const gained =
-      questionKey(merged) !== questionKey(t.post) ||
-      (!hasJudgeableContent(t.post) && hasJudgeableContent(merged));
+      addsContext(merged, t.post) || (!hasJudgeableContent(t.post) && hasJudgeableContent(merged));
     if (!gained) return false;
     t.post = merged;
     if (t.status === "done") t.status = "idle";
@@ -314,7 +316,7 @@ class Feed {
       this.touched(t);
       this.render(t, false);
       // It gained context while it was being asked about.
-      if (questionKey(t.post) !== questionKey(asked)) {
+      if (t.post !== asked) {
         t.status = "idle";
         this.askIfNear(t);
       }
@@ -575,7 +577,8 @@ function mergePost(prev: Post, next: Post): Post {
     ...next,
     text: next.text || prev.text,
     images: (next.images?.length ?? 0) >= (prev.images?.length ?? 0) ? next.images : prev.images,
-    replyTo: next.replyTo ?? prev.replyTo,
+    // Once X unmounts the parent, a conversation page reads the main post as the parent instead.
+    replyTo: prev.replyTo ?? next.replyTo,
     readerNote: bestNote(prev.readerNote, next.readerNote),
     quote,
     link: next.link ?? prev.link,

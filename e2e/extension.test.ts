@@ -463,6 +463,35 @@ describe("on X", { timeout: 30_000 }, () => {
     expect(rechecked).toMatch(/Replying to @vidparent/);
   });
 
+  it("keeps a reply's parent on a conversation page after X unmounts it", async () => {
+    const page = await m.ctx.newPage();
+    try {
+      await page.goto("https://x.com/convmain/status/400");
+      const main = cell({ id: "400", handle: "convmain", name: "Conv Main", text: "Big news" });
+      await append(
+        page,
+        main.replace('tabindex="0"', 'tabindex="-1"') +
+          cell({ id: "401", handle: "convparent", name: "Parent", text: "Is it?", thread: true }) +
+          cell({ id: "402", handle: "convreply", name: "Reply", text: "Yes it is" }),
+      );
+      await poll(() => m.sent.map(handleIn)).toContain("convreply");
+      const before = m.sent.length;
+      await page.locator(cellOf("convparent")).evaluate((el) => el.remove());
+      await page.locator(cellOf("convreply")).evaluate((el) => {
+        const slot = document.createElement("div");
+        slot.dataset.testid = "tweetPhoto";
+        slot.innerHTML = '<img src="https://pbs.twimg.com/media/conv.jpg">';
+        el.querySelector('[data-testid="tweetText"]')!.after(slot);
+      });
+      await poll(() => m.sent.length).toBeGreaterThan(before);
+      const rechecked = m.sent.findLast((text) => handleIn(text) === "convreply");
+      expect(rechecked).toMatch(/Attached image/);
+      expect(rechecked).toMatch(/Replying to @convparent/);
+    } finally {
+      await page.close();
+    }
+  });
+
   it("applies live follow and unfollow changes without reloading", async () => {
     await m.ctx.route("https://x.com/i/api/1.1/friendships/*.json", (route) =>
       route.fulfill({ json: { screen_name: "rager" } }),
@@ -481,13 +510,12 @@ describe("on X", { timeout: 30_000 }, () => {
     await poll(() => chomping(panel)).toBe(true);
   });
 
-  it("counts a rate limit down from when it starts, then drops the notice", async () => {
+  it("counts a rate limit down from when it starts", async () => {
     await m.sw.evaluate(() =>
-      chrome.storage.session.set({ status: { kind: "rate-limited", until: Date.now() + 2_000 } }),
+      chrome.storage.session.set({ status: { kind: "rate-limited", until: Date.now() + 20_000 } }),
     );
     // The first number it shows, not one it counts down to later.
-    expect(await panel.locator(".notice").innerText()).toMatch(/resumes in [12]s/);
-    await poll(() => panel.locator(".notice").count()).toBe(0);
+    expect(await panel.locator(".notice").innerText()).toMatch(/resumes in (19|20)s/);
   });
 
   it("does not pop unchanged strictness counts on unrelated re-renders", async () => {
@@ -500,6 +528,50 @@ describe("on X", { timeout: 30_000 }, () => {
       expect(await fresh.locator(".segment-count.is-new").count()).toBe(0);
     } finally {
       await settings(m.sw, { strictness: "balanced" });
+      await fresh.close();
+    }
+  });
+
+  it("stops the rate-limit countdown timer once it expires", async () => {
+    const fresh = await m.ctx.newPage();
+    await fresh.addInitScript(() => {
+      const active = new Set<number>();
+      const origSet = window.setInterval;
+      const origClear = window.clearInterval;
+      window.setInterval = ((...args: Parameters<typeof setInterval>) => {
+        const id = origSet(...args);
+        active.add(id);
+        return id;
+      }) as typeof setInterval;
+      window.clearInterval = ((id?: number) => {
+        if (id !== undefined) active.delete(id);
+        return origClear(id);
+      }) as typeof clearInterval;
+      (window as unknown as { __intervals: () => number }).__intervals = () => active.size;
+      const query = chrome.tabs.query.bind(chrome.tabs);
+      chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>
+        info.active ? (await query({ url: "https://x.com/*" })).slice(0, 1) : query(info);
+    });
+    try {
+      await m.sw.evaluate(() =>
+        chrome.storage.session.set({
+          status: { kind: "rate-limited", until: Date.now() + 1200 },
+        }),
+      );
+      await fresh.goto(`chrome-extension://${m.extension}/sidepanel/index.html`);
+      await poll(() => fresh.locator(".notice").count()).toBe(1);
+      await poll(() => fresh.locator(".notice").count()).toBe(0);
+      await expect
+        .poll(
+          () =>
+            fresh.evaluate(() =>
+              (window as unknown as { __intervals: () => number }).__intervals(),
+            ),
+          { timeout: 2_000 },
+        )
+        .toBe(0);
+    } finally {
+      await m.sw.evaluate(() => chrome.storage.session.set({ status: { kind: "ok" } }));
       await fresh.close();
     }
   });

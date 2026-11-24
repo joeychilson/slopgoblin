@@ -384,7 +384,8 @@ describe("on X", { timeout: 30_000 }, () => {
   });
 
   it("filters hidden posts by category in the side panel", async () => {
-    await panel.selectOption(".filter-select", "ragebait");
+    await panel.click(".filter-trigger");
+    await panel.click('.filter-option:has-text("Ragebait")');
     await poll(() => panel.locator(".list .item").count()).toBe(1);
     expect(await panel.innerText(".list")).toContain("Rage Farm");
     await panel.click('.filter-bar button:has-text("Show all")');

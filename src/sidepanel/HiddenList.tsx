@@ -95,39 +95,15 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
       )}
 
       {categoryCounts.length >= 2 && (
-        <div class="filter-bar">
-          <span class={activeFilter ? "filter-wrap is-active" : "filter-wrap"}>
-            <select
-              class="filter-select"
-              aria-label="Filter hidden posts by category"
-              value={activeFilter}
-              onChange={(event) => {
-                setFilter(event.currentTarget.value as CategoryId | "");
-                setLimit(PAGE_SIZE);
-              }}
-            >
-              <option value="">All categories ({hidden.length})</option>
-              {categoryCounts.map(([id, count]) => (
-                <option key={id} value={id}>
-                  {CATEGORY[id].label} ({count})
-                </option>
-              ))}
-            </select>
-            <Icon d={ICONS.chevron} size={14} weight={2.2} />
-          </span>
-          {activeFilter && (
-            <button
-              type="button"
-              class="undo-link"
-              onClick={() => {
-                setFilter("");
-                setLimit(PAGE_SIZE);
-              }}
-            >
-              Show all
-            </button>
-          )}
-        </div>
+        <CategoryFilter
+          value={activeFilter}
+          total={hidden.length}
+          counts={categoryCounts}
+          onChange={(next) => {
+            setFilter(next);
+            setLimit(PAGE_SIZE);
+          }}
+        />
       )}
 
       {visible.length > 0 && (
@@ -156,6 +132,157 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
         </button>
       )}
     </section>
+  );
+}
+
+function CategoryFilter(props: {
+  value: CategoryId | "";
+  total: number;
+  counts: [CategoryId, number][];
+  onChange: (value: CategoryId | "") => void;
+}) {
+  const { value, total, counts, onChange } = props;
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setOpen(false);
+      trigger.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  function focusItem(index: number) {
+    const items = menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
+    if (!items?.length) return;
+    items[((index % items.length) + items.length) % items.length]!.focus();
+  }
+
+  function onMenuKeyDown(event: KeyboardEvent) {
+    const items = [
+      ...(menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []),
+    ];
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      focusItem(current + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      focusItem(current <= 0 ? items.length - 1 : current - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      focusItem(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      focusItem(items.length - 1);
+    }
+  }
+
+  function pick(next: CategoryId | "") {
+    onChange(next);
+    setOpen(false);
+    trigger.current?.focus();
+  }
+
+  const activeCount = value ? (counts.find(([id]) => id === value)?.[1] ?? 0) : total;
+
+  return (
+    <div ref={root} class="filter-bar">
+      <div class="filter-dropdown">
+        <button
+          ref={trigger}
+          type="button"
+          class={value ? "filter-trigger is-active" : "filter-trigger"}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={menuId}
+          onClick={() => setOpen((was) => !was)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setOpen(true);
+              queueMicrotask(() => focusItem(0));
+            }
+          }}
+        >
+          <span>{value ? CATEGORY[value].label : "All categories"}</span>
+          <span class="filter-count">{activeCount}</span>
+          <Icon d={ICONS.chevron} size={14} weight={2.2} />
+        </button>
+
+        {open && (
+          <div
+            ref={menu}
+            id={menuId}
+            class="filter-menu"
+            role="menu"
+            aria-label="Filter hidden posts by category"
+            onKeyDown={onMenuKeyDown}
+          >
+            <FilterOption
+              label="All categories"
+              count={total}
+              selected={value === ""}
+              onSelect={() => pick("")}
+            />
+            <div class="filter-sep" role="separator" />
+            {counts.map(([id, count]) => (
+              <FilterOption
+                key={id}
+                label={CATEGORY[id].label}
+                count={count}
+                selected={value === id}
+                onSelect={() => pick(id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {value && (
+        <button type="button" class="undo-link" onClick={() => onChange("")}>
+          Show all
+        </button>
+      )}
+    </div>
+  );
+}
+
+function FilterOption(props: {
+  label: string;
+  count: number;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={props.selected}
+      class={props.selected ? "filter-option is-selected" : "filter-option"}
+      onClick={props.onSelect}
+    >
+      <span class="filter-check">
+        {props.selected && <Icon d={ICONS.check} size={14} weight={2.3} />}
+      </span>
+      <span class="filter-label">{props.label}</span>
+      <span class="filter-option-count">{props.count}</span>
+    </button>
   );
 }
 

@@ -88,23 +88,27 @@ class Feed {
     const touched = new Set<Element>();
 
     for (const record of records) {
-      let relevant = false;
+      const target = record.target instanceof Element ? record.target : null;
+      if (target?.closest(".sg-bar")) continue;
+      let hasElement = false;
+      let hasText = false;
       for (const node of record.addedNodes) {
-        if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        const el = node as Element;
-        if (el.classList.contains("sg-bar") || el.closest(".sg-bar")) continue;
-        relevant = true;
-        break;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const el = node as Element;
+          if (el.classList.contains("sg-bar") || el.closest(".sg-bar")) continue;
+          hasElement = true;
+          break;
+        }
+        if (node.nodeType === Node.TEXT_NODE && node.nodeValue?.trim()) hasText = true;
       }
-      if (!relevant) continue;
-      added = true;
-      const host = (record.target as Element).closest?.(`[${ID_ATTR}]`);
+      if (!hasElement && !hasText) continue;
+      if (hasElement) added = true;
+      const host = target?.closest(`[${ID_ATTR}]`);
       if (host) touched.add(host);
     }
 
-    if (!added) return;
     for (const el of touched) this.refreshElement(el);
-    this.scan();
+    if (added) this.scan();
   }
 
   private onIntersect(entries: IntersectionObserverEntry[]) {
@@ -157,7 +161,7 @@ class Feed {
       el.setAttribute(ID_ATTR, post.id);
       const t = this.posts.get(post.id) ?? this.track(post);
       if (!t.avatar) t.avatar = this.site.avatar(el);
-      if (addsContext(post, t.post)) {
+      if (gainedContent(post, t.post)) {
         t.post = post;
         if (t.status === "done") t.status = "idle";
       }
@@ -187,7 +191,7 @@ class Feed {
     if (wake && !this.site.hasPendingMedia?.(el)) wake();
 
     const reread = this.site.readPost(el);
-    if (reread && addsContext(reread, t.post)) {
+    if (reread && gainedContent(reread, t.post)) {
       t.post = reread;
       if (t.status === "done") t.status = "idle";
       if (this.wantsRequest(t) && this.isNear(el)) void this.request(t);
@@ -534,6 +538,9 @@ const handleOf = (t: Tracked) => t.post.author.handle.toLowerCase();
 
 const hasJudgeableContent = (post: Post) =>
   Boolean(post.text || post.images?.length || post.quote || post.link || post.readerNote);
+
+const gainedContent = (next: Post, prev: Post) =>
+  addsContext(next, prev) || (!hasJudgeableContent(prev) && hasJudgeableContent(next));
 
 function priorityOf(el: Element): Priority {
   const rect = el.getBoundingClientRect();

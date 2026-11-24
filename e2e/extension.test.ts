@@ -625,9 +625,34 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
         el.querySelector('[data-testid="tweetPhoto"]')!.append(img);
       });
       await poll(() => m.sent.length).toBe(1);
-      expect(Date.now() - arrived).toBeLessThan(500);
+      expect(Date.now() - arrived).toBeLessThan(250);
       expect(m.sent[0]).toMatch(/Attached image/);
       await shows(page, "photopost", "collapsed", /^AI slop from Photo Post/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("judges a post whose text arrives after it first mounted empty", async () => {
+    const empty: MockPost = {
+      id: "611",
+      handle: "latetext",
+      name: "Late Text",
+      text: "",
+    };
+    const m = await launch([empty]);
+    try {
+      const page = await m.ctx.newPage();
+      await page.goto("https://x.com/home");
+      // Empty shell is not sent to Google after settling.
+      await sleep(500);
+      expect(m.sent).toEqual([]);
+
+      await page.locator(cellOf("latetext")).evaluate((el) => {
+        el.querySelector('[data-testid="tweetText"]')!.textContent = "Outrage [ragebait .9]";
+      });
+      await shows(page, "latetext", "collapsed", /^Ragebait from Late Text/);
+      expect(m.sent).toHaveLength(1);
     } finally {
       await m.ctx.close();
     }

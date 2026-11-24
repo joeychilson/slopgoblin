@@ -64,7 +64,7 @@ export function judge(post: Judged, settings: Settings): Verdict | null {
   }
   return topOn &&
     score >= THRESHOLD[settings.strictness] &&
-    (on >= score / 2 || (topAll !== undefined && settings.categories[topAll.id]))
+    (on >= score / 2 || (topAll !== undefined && topOn.p >= topAll.p))
     ? { category: topOn.id, score }
     : null;
 }

@@ -70,9 +70,8 @@ export function readData() {
   const origFetch = window.fetch;
   if (typeof origFetch === "function") {
     window.fetch = function (input, init) {
-      const url =
-        typeof input === "string" ? input : input instanceof URL ? input.href : (input?.url ?? "");
-      const promise = origFetch.call(this, input, init);
+      const url = resolveUrl(input);
+      const promise = origFetch.call(window, input, init);
       if (GRAPHQL.test(url) || FRIENDSHIP.test(url)) {
         void promise
           .then((res) => (res.ok ? res.clone().json() : undefined))
@@ -83,6 +82,17 @@ export function readData() {
       }
       return promise;
     };
+  }
+}
+
+function resolveUrl(input: RequestInfo | URL): string {
+  const raw =
+    typeof input === "string" ? input : input instanceof URL ? input.href : (input?.url ?? "");
+  if (!raw) return "";
+  try {
+    return new URL(raw, location.href).href;
+  } catch {
+    return "";
   }
 }
 

@@ -21,13 +21,19 @@ interface Waiter {
   resolve: () => void;
 }
 
+interface Inflight {
+  id: string;
+  priority: Priority;
+  promise: Promise<ClassifyResponse>;
+}
+
 let apiKey: string | undefined;
 let keyRejected = false;
 let pausedUntil = 0;
 const paused = new Set<() => void>();
 let active = 0;
 const waiting: Waiter[] = [];
-const inflight = new Map<string, Promise<ClassifyResponse>>();
+const inflight = new Map<string, Inflight>();
 
 /** `isNew` is false when a restarted worker loads the key it already had, so the status stands. */
 export function setApiKey(key: string | undefined, isNew: boolean) {
@@ -45,22 +51,29 @@ export function classify(
   priority: Priority = 0,
 ): Promise<ClassifyResponse> {
   const key = questionKey(post);
-  if (cachedOnly) return run(post, key, true, priority);
+  if (cachedOnly) return run(post, key, true, () => priority);
   const asking = `${post.id} ${key}`;
-  let pending = inflight.get(asking);
-  if (!pending) {
-    pending = run(post, key, false, priority).finally(() => inflight.delete(asking));
-    inflight.set(asking, pending);
+  let entry = inflight.get(asking);
+  if (!entry) {
+    const promise = run(post, key, false, () => inflight.get(asking)?.priority ?? priority).finally(
+      () => inflight.delete(asking),
+    );
+    entry = { id: post.id, priority, promise };
+    inflight.set(asking, entry);
   } else if (priority === 0) {
     prioritize([post.id]);
   }
-  return pending;
+  return entry.promise;
 }
 
 /** Promotes queued posts that just entered the viewport ahead of off-screen lookahead. */
 export function prioritize(ids: string[]) {
-  if (!ids.length || !waiting.length) return;
+  if (!ids.length) return;
   const urgent = new Set(ids);
+  for (const entry of inflight.values()) {
+    if (urgent.has(entry.id)) entry.priority = 0;
+  }
+  if (!waiting.length) return;
   const now = Date.now();
   const promoted: Waiter[] = [];
   for (let i = waiting.length - 1; i >= 0; i--) {
@@ -82,7 +95,7 @@ async function run(
   post: Post,
   key: string,
   cachedOnly: boolean,
-  priority: Priority,
+  priority: () => Priority,
 ): Promise<ClassifyResponse> {
   let entry = await getEntry(post.id);
   const now = Date.now();
@@ -94,7 +107,7 @@ async function run(
   if (!apiKey || keyRejected) return { needsKey: true };
   if (cachedOnly) return { uncached: true };
 
-  const answer = await ask(post, priority);
+  const answer = await ask(post, priority());
   if (answer === "unkeyed") return { needsKey: true };
   if (answer === "unavailable") return { unavailable: true };
   const scores = answer === "blocked" ? REFUSED : answer;

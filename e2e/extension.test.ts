@@ -377,6 +377,16 @@ describe("on X", { timeout: 30_000 }, () => {
     await panel.click(`${row} .item-undo`);
     await shows(x, "slopper", "collapsed");
     await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
+    // Undoing from the post's bar in X immediately restores the settling row in the panel.
+    await panel.click(`${row} .item-open`);
+    await panel.click(`${row} button:has-text("Not AI slop")`);
+    await shows(x, "slopper", "confirmed");
+    await poll(() => panel.locator(`${row}.is-settled`).count()).toBe(1);
+    await click(x, "slopper", "[data-sg-action=undo]");
+    await shows(x, "slopper", "revealed");
+    await poll(() => panel.locator(`${row}:not(.is-settled) .item-open`).count()).toBe(1);
+    await click(x, "slopper", "[data-sg-action=hide]");
+    await shows(x, "slopper", "collapsed");
     // Let it through again: this time it folds away on its own, once the pointer is off it.
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
@@ -419,16 +429,48 @@ describe("on X", { timeout: 30_000 }, () => {
     expect(m.sent.at(-1)).toMatch(/Attached image/);
   });
 
+  it("re-checks when a video poster attribute arrives and keeps reply context after parent unmounts", async () => {
+    const parent: MockPost = {
+      id: "306",
+      handle: "vidparent",
+      name: "Vid Parent",
+      text: "Original thread",
+      thread: true,
+    };
+    const reply: MockPost = {
+      id: "307",
+      handle: "vidreply",
+      name: "Vid Reply",
+      text: "Check this clip",
+      media: "video",
+    };
+    await append(x, cell(parent) + cell(reply));
+    await x.locator(cellOf("vidreply")).evaluate((el) => {
+      el.querySelector('[data-testid="videoPlayer"]')!.append(document.createElement("video"));
+    });
+    await poll(() => m.sent.map(handleIn)).toContain("vidreply");
+    const before = m.sent.length;
+    await x.locator(cellOf("vidparent")).evaluate((el) => el.remove());
+    await x.locator(cellOf("vidreply")).evaluate((el) => {
+      el.querySelector("video")!.setAttribute(
+        "poster",
+        "https://pbs.twimg.com/ext_tw_video_thumb/999/pu/img/thumb.jpg",
+      );
+    });
+    await poll(() => m.sent.length).toBeGreaterThan(before);
+    const rechecked = m.sent.findLast((text) => handleIn(text) === "vidreply");
+    expect(rechecked).toMatch(/Attached image/);
+    expect(rechecked).toMatch(/Replying to @vidparent/);
+  });
+
   it("applies live follow and unfollow changes without reloading", async () => {
     await m.ctx.route("https://x.com/i/api/1.1/friendships/*.json", (route) =>
       route.fulfill({ json: { screen_name: "rager" } }),
     );
-    await x.evaluate(() =>
-      fetch("https://x.com/i/api/1.1/friendships/create.json", { method: "POST" }),
-    );
+    await x.evaluate(() => fetch("/i/api/1.1/friendships/create.json", { method: "POST" }));
     await shows(x, "rager", "shown");
     await x.evaluate(() =>
-      fetch("https://x.com/i/api/1.1/friendships/destroy.json", { method: "POST" }),
+      ({ f: window.fetch }).f("/i/api/1.1/friendships/destroy.json", { method: "POST" }),
     );
     await shows(x, "rager", "collapsed");
   });

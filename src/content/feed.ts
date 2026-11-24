@@ -8,7 +8,7 @@ import type {
   TabState,
 } from "../core/messages.ts";
 import { judge, needsScores, type Judged, type Verdict } from "../core/policy.ts";
-import { isReply, type Label, type Post } from "../core/post.ts";
+import { isReply, type Label, type Post, type ReaderNote } from "../core/post.ts";
 import { updateSettings, watchSettings, type Settings } from "../core/settings.ts";
 import type { SiteAdapter, SiteData } from "../sites/site.ts";
 import { renderCell, type BarAction, type View } from "./bar.ts";
@@ -19,7 +19,8 @@ const FAST_SETTLE_MS = 300;
 /** Max settle while waiting for X to hydrate an image or video poster. */
 const MEDIA_SETTLE_MS = 1000;
 /** Lookahead below the viewport only; posts above the fold won't reshape anyway. */
-const LOOKAHEAD = "0px 0px 1000px 0px";
+const LOOKAHEAD_PX = 1000;
+const LOOKAHEAD = `0px 0px ${LOOKAHEAD_PX}px 0px`;
 const ID_ATTR = "data-sg-post";
 /** Evict unmounted posts past this count so multi-day tabs stay bounded. */
 const KEEP = 2000;
@@ -77,7 +78,12 @@ class Feed {
     this.unwatchData = site.watchData?.((data) => this.onData(data));
     document.addEventListener("click", this.onBarClick, true);
     chrome.runtime.onMessage.addListener(this.onTabMessage);
-    this.observer.observe(document.body, { childList: true, subtree: true });
+    this.observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["src", "poster"],
+    });
     this.scan();
     // Tell the side panel this tab is running before the site renders any post.
     this.changed();
@@ -90,21 +96,25 @@ class Feed {
     for (const record of records) {
       const target = record.target instanceof Element ? record.target : null;
       if (target?.closest(".sg-bar")) continue;
+      if (record.type === "attributes") {
+        const host = target?.closest(`[${ID_ATTR}]`);
+        if (host) touched.add(host);
+        continue;
+      }
       let hasElement = false;
       let hasText = false;
       for (const node of record.addedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE) {
-          const el = node as Element;
-          if (el.classList.contains("sg-bar") || el.closest(".sg-bar")) continue;
+          if ((node as Element).closest(".sg-bar")) continue;
           hasElement = true;
           break;
         }
         if (node.nodeType === Node.TEXT_NODE && node.nodeValue?.trim()) hasText = true;
       }
       if (!hasElement && !hasText) continue;
-      if (hasElement) added = true;
       const host = target?.closest(`[${ID_ATTR}]`);
       if (host) touched.add(host);
+      if (hasElement || !host) added = true;
     }
 
     for (const el of touched) this.refreshElement(el);
@@ -161,8 +171,9 @@ class Feed {
       el.setAttribute(ID_ATTR, post.id);
       const t = this.posts.get(post.id) ?? this.track(post);
       if (!t.avatar) t.avatar = this.site.avatar(el);
-      if (gainedContent(post, t.post)) {
-        t.post = post;
+      const merged = mergePost(t.post, post);
+      if (gainedContent(merged, t.post)) {
+        t.post = merged;
         if (t.status === "done") t.status = "idle";
       }
       // Observe the cell wrapper rather than `<article>`, which goes `display: none` when collapsed.
@@ -191,10 +202,13 @@ class Feed {
     if (wake && !this.site.hasPendingMedia?.(el)) wake();
 
     const reread = this.site.readPost(el);
-    if (reread && gainedContent(reread, t.post)) {
-      t.post = reread;
-      if (t.status === "done") t.status = "idle";
-      if (this.wantsRequest(t) && this.isNear(el)) void this.request(t);
+    if (reread) {
+      const merged = mergePost(t.post, reread);
+      if (gainedContent(merged, t.post)) {
+        t.post = merged;
+        if (t.status === "done") t.status = "idle";
+        if (this.wantsRequest(t) && this.isNear(el)) void this.request(t);
+      }
     }
   }
 
@@ -275,14 +289,16 @@ class Feed {
 
     let asked = t.post;
     let res = await this.classify(t, true);
+    if (this.stopped) return;
     if ("uncached" in res) {
       if (cacheOnly && !this.hasNearElement(t)) return this.setIdle(t);
       const el = await this.settle(t);
+      if (this.stopped) return;
       if (!el || !needsScores({ ...this.judged(t), isReply: isReply(t.post) }, this.settings)) {
         return this.setIdle(t);
       }
       const reread = this.site.readPost(el);
-      if (reread && !addsContext(t.post, reread)) t.post = reread;
+      if (reread) t.post = mergePost(t.post, reread);
       // Don't send an empty placeholder shell before its text or media has appeared.
       if (!hasJudgeableContent(t.post)) return this.setIdle(t);
       asked = t.post;
@@ -292,6 +308,7 @@ class Feed {
       } finally {
         t.queued = false;
       }
+      if (this.stopped) return;
     }
 
     if ("scores" in res) {
@@ -373,7 +390,7 @@ class Feed {
     const box = this.site.container(el) ?? el;
     if (this.nearCells.has(box)) return true;
     const rect = box.getBoundingClientRect();
-    return rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight + 1000;
+    return rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight + LOOKAHEAD_PX;
   }
 
   /** `fresh` is false when a change lands on a post already on screen. */
@@ -487,6 +504,7 @@ class Feed {
   }
 
   private changed() {
+    if (this.stopped) return;
     this.flushTimer ??= setTimeout(() => {
       this.flushTimer = undefined;
       if (this.unsent.size) {
@@ -541,6 +559,34 @@ const hasJudgeableContent = (post: Post) =>
 
 const gainedContent = (next: Post, prev: Post) =>
   addsContext(next, prev) || (!hasJudgeableContent(prev) && hasJudgeableContent(next));
+
+function bestNote(prev: ReaderNote | undefined, next: ReaderNote | undefined) {
+  if (!prev) return next;
+  if (!next) return prev;
+  return prev.rated && !next.rated ? prev : next;
+}
+
+/** Keeps previously discovered context if X unmounts a parent or media while new content arrives. */
+function mergePost(prev: Post, next: Post): Post {
+  const quote =
+    prev.quote && next.quote
+      ? {
+          handle: next.quote.handle,
+          text: next.quote.text || prev.quote.text,
+          readerNote: bestNote(prev.quote.readerNote, next.quote.readerNote),
+        }
+      : (next.quote ?? prev.quote);
+  return {
+    ...next,
+    text: next.text || prev.text,
+    images: (next.images?.length ?? 0) >= (prev.images?.length ?? 0) ? next.images : prev.images,
+    replyTo: next.replyTo ?? prev.replyTo,
+    readerNote: bestNote(prev.readerNote, next.readerNote),
+    quote,
+    link: next.link ?? prev.link,
+    labels: [...new Set([...prev.labels, ...next.labels])],
+  };
+}
 
 function priorityOf(el: Element): Priority {
   const rect = el.getBoundingClientRect();

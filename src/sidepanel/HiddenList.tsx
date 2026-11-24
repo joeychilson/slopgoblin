@@ -32,6 +32,8 @@ interface Settling {
   quiet?: boolean;
   /** Shown as hidden again while the list catches up. */
   undone?: boolean;
+  /** True once `hidden` has reflected the let-through; reappearing means it was undone. */
+  gone?: boolean;
 }
 
 export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: boolean }) {
@@ -100,11 +102,28 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [choosing]);
 
-  // Undone rows hand back to the list once it has them again.
+  // Track when let-through rows leave `hidden`, and hand them back as soon as they return
+  // (whether undone here, from the post's bar in the feed, or from Settings).
   useEffect(() => {
     const listed = new Set(hidden.map(({ post }) => post.id));
-    const back = [...settling.values()].filter((s) => s.undone && listed.has(s.item.post.id));
-    if (back.length) drop(...back.map((s) => s.item.post.id));
+    setSettling((prev) => {
+      if (!prev.size) return prev;
+      let changed = false;
+      const next = new Map(prev);
+      for (const [id, s] of prev) {
+        if (!listed.has(id)) {
+          if (!s.gone) {
+            next.set(id, { ...s, gone: true });
+            changed = true;
+          }
+        } else if (s.gone) {
+          clearTimer(id);
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
   }, [hidden]);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -122,8 +141,13 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     return () => removeEventListener("scroll", onScroll);
   }, [loaded, remaining]);
 
-  function later(id: string, ms: number, run: () => void) {
+  function clearTimer(id: string) {
     clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
+  }
+
+  function later(id: string, ms: number, run: () => void) {
+    clearTimer(id);
     timers.current.set(
       id,
       setTimeout(() => {
@@ -134,6 +158,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
   }
 
   function drop(...ids: string[]) {
+    for (const id of ids) clearTimer(id);
     setSettling((prev) => {
       const next = new Map(prev);
       for (const id of ids) next.delete(id);
@@ -173,7 +198,11 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     // Keyboard focus on the row moves on to the next one rather than falling off the page.
     if (row?.contains(document.activeElement)) {
       const next = row.nextElementSibling ?? row.previousElementSibling;
-      (next?.querySelector<HTMLElement>(".item-open") ?? title.current)?.focus();
+      (
+        next?.querySelector<HTMLElement>(".item-open, .item-undo") ??
+        title.current ??
+        document.querySelector<HTMLElement>(".peek")
+      )?.focus();
     }
     setSettling((prev) => {
       const settled = prev.get(id);
@@ -192,8 +221,23 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     } else {
       void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
     }
-    setSettling((prev) => new Map(prev).set(id, { ...settled, undone: true, leaving: false }));
-    later(id, RESTORE_MS, () => drop(id));
+    const restored = [
+      id,
+      ...(action === "trust"
+        ? [...settling.values()]
+            .filter((s) => s.quiet && s.item.post.handle.toLowerCase() === handle)
+            .map((s) => s.item.post.id)
+        : []),
+    ];
+    setSettling((prev) => {
+      const next = new Map(prev);
+      for (const otherId of restored) {
+        const current = prev.get(otherId);
+        if (current) next.set(otherId, { ...current, undone: true, leaving: false, quiet: false });
+      }
+      return next;
+    });
+    for (const otherId of restored) later(otherId, RESTORE_MS, () => drop(otherId));
     // Focus stays on the row, now hidden again.
     requestAnimationFrame(() =>
       document.querySelector<HTMLElement>(`.item[data-id="${CSS.escape(id)}"] .item-open`)?.focus(),
@@ -495,6 +539,7 @@ function Item(props: {
 /** The author's photo; their initial when there's none, or it doesn't load. */
 function Avatar({ post, nsfw }: { post: CheckedPost; nsfw: boolean }) {
   const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [post.avatar]);
   const initial = displayName(post).replace(/^@/, "").trim().charAt(0).toUpperCase();
   return (
     <span class="avatar" aria-hidden="true">

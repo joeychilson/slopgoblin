@@ -39,6 +39,11 @@ describe("judge", () => {
       score: 0.8,
     });
     expect(judge(split, settings({ categories: only("clickbait") }))).toBeNull();
+    const tied = post({ scores: { ragebait: 0.3, clickbait: 0.3, engagement_bait: 0.2 } });
+    expect(judge(tied, settings({ categories: only("clickbait") }))).toEqual({
+      category: "clickbait",
+      score: 0.8,
+    });
   });
 
   it("counts a post Google refused to read as NSFW", () => {

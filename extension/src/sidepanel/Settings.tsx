@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import type { HiddenPost } from "../core/checked.ts";
 import { USD_PER_MILLION_TOKENS } from "../core/decisions.ts";
 import { GOBLIN_GLYPH } from "../core/glyphs.ts";
@@ -35,32 +35,18 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
           What to hide
         </h2>
         <ul className="rows">
-          {CATEGORIES.map((category) => {
-            const on = settings.categories[category.id];
-            const count = byKind.get(category.id)?.length;
-            const id = `category-${category.id}`;
-            return (
-              <li key={category.id}>
-                <label className={on ? "row" : "row is-off"} htmlFor={id}>
-                  <span className="row-text">
-                    <span className="row-title">{category.label}</span>
-                    <span className="row-desc">{category.blurb}</span>
-                  </span>
-                  {on && count ? <span className="row-count">{count} hidden</span> : null}
-                  <Switch
-                    id={id}
-                    label={category.label}
-                    checked={on}
-                    onChange={(next) =>
-                      host.updateSettings((s) => ({
-                        categories: { ...s.categories, [category.id]: next },
-                      }))
-                    }
-                  />
-                </label>
-              </li>
-            );
-          })}
+          {CATEGORIES.map((category) => (
+            <SwitchRow
+              key={category.id}
+              title={category.label}
+              desc={category.blurb}
+              on={settings.categories[category.id]}
+              hidden={byKind.get(category.id)?.length}
+              onChange={(on) =>
+                host.updateSettings((s) => ({ categories: { ...s.categories, [category.id]: on } }))
+              }
+            />
+          ))}
         </ul>
       </section>
 
@@ -89,23 +75,12 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
           Always show
         </h2>
         <ul className="rows">
-          <li>
-            <label
-              className={settings.trustFollowing ? "row" : "row is-off"}
-              htmlFor="trust-following"
-            >
-              <span className="row-text">
-                <span className="row-title">People you follow</span>
-                <span className="row-desc">Never hidden or checked</span>
-              </span>
-              <Switch
-                id="trust-following"
-                label="People you follow"
-                checked={settings.trustFollowing}
-                onChange={(trustFollowing) => host.updateSettings(() => ({ trustFollowing }))}
-              />
-            </label>
-          </li>
+          <SwitchRow
+            title="People you follow"
+            desc="Never hidden or checked"
+            on={settings.trustFollowing}
+            onChange={(trustFollowing) => host.updateSettings(() => ({ trustFollowing }))}
+          />
         </ul>
         {settings.trusted.length ? (
           <ul className="chips">
@@ -150,6 +125,30 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
         </p>
       </section>
     </div>
+  );
+}
+
+/** A setting that's on or off: its name, what it does, and a switch. Off, the words fade. */
+function SwitchRow(props: {
+  title: string;
+  desc: string;
+  on: boolean;
+  /** How many posts it hides right now. */
+  hidden?: number;
+  onChange: (on: boolean) => void;
+}) {
+  const id = useId();
+  return (
+    <li>
+      <label className={props.on ? "row" : "row is-off"} htmlFor={id}>
+        <span className="row-text">
+          <span className="row-title">{props.title}</span>
+          <span className="row-desc">{props.desc}</span>
+        </span>
+        {props.on && props.hidden ? <span className="row-count">{props.hidden} hidden</span> : null}
+        <Switch id={id} label={props.title} checked={props.on} onChange={props.onChange} />
+      </label>
+    </li>
   );
 }
 

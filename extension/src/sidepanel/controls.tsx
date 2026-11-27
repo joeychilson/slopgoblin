@@ -1,4 +1,4 @@
-import { useRef } from "preact/hooks";
+import { useState } from "react";
 import { EYE_OFF } from "../core/glyphs.ts";
 
 export function Switch(props: {
@@ -12,7 +12,7 @@ export function Switch(props: {
       type="button"
       role="switch"
       id={props.id}
-      class="switch"
+      className="switch"
       aria-checked={props.checked}
       aria-label={props.label}
       onClick={() => props.onChange(!props.checked)}
@@ -39,14 +39,14 @@ export function Segments<T extends string>(props: {
   const at = options.findIndex((o) => o.value === value);
   return (
     <div
-      class="segments"
+      className="segments"
       role="radiogroup"
       aria-label={props.label}
-      style={`--n: ${options.length}; --at: ${at}`}
+      style={{ "--n": options.length, "--at": at }}
     >
-      <span class="segments-pill" aria-hidden="true" />
+      <span className="segments-pill" aria-hidden="true" />
       {options.map((option) => (
-        <label key={option.value} class="segment">
+        <label key={option.value} className="segment">
           <input
             type="radio"
             name={props.name}
@@ -66,14 +66,11 @@ export function Segments<T extends string>(props: {
 
 /** A number that pops when it changes, but not when it first appears. */
 function Count({ n }: { n: number }) {
-  const prev = useRef(n);
-  const changed = useRef(false);
-  if (prev.current !== n) {
-    prev.current = n;
-    changed.current = true;
-  }
+  const [first] = useState(n);
+  const [changed, setChanged] = useState(false);
+  if (!changed && n !== first) setChanged(true);
   return (
-    <span key={n} class={changed.current ? "segment-count is-new" : "segment-count"}>
+    <span key={n} className={changed ? "segment-count is-new" : "segment-count"}>
       {n}
     </span>
   );
@@ -82,8 +79,8 @@ function Count({ n }: { n: number }) {
 /** A 24px stroke icon, colored by the surrounding text. */
 export function Icon({ d, size = 20, weight }: { d: string; size?: number; weight?: number }) {
   return (
-    <svg class="icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <path d={d} stroke-width={weight} />
+    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d={d} strokeWidth={weight} />
     </svg>
   );
 }

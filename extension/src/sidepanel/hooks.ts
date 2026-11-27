@@ -1,8 +1,9 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "react";
 import { CHECKED_PREFIX, type CheckedPost } from "../core/checked.ts";
 import type { RuntimeMessage, TabMessage, TabState } from "../core/messages.ts";
-import { loadSettings, watchSettings, type Settings } from "../core/settings.ts";
+import { loadSettings, updateSettings, watchSettings, type Settings } from "../core/settings.ts";
 import { store, thisMonth, type Stored } from "../core/storage.ts";
+import type { Host } from "./host.ts";
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>();
@@ -166,4 +167,37 @@ export function useTicker(until: number) {
   }, [active]);
   // Read on each render, so a countdown that starts while the panel is open starts right.
   return now;
+}
+
+/** The panel's host in the extension: settings in Chrome's storage, posts in the reader's tabs. */
+export function useChromeHost(tab: ActiveTab | null | undefined): Host {
+  const peekShortcut = useShortcut("toggle-peek");
+  // Only a tab Slop Goblin runs in can show a post in place.
+  const tabId = tab?.state ? tab.id : undefined;
+  return useMemo(
+    () => ({
+      updateSettings: (patch) => void updateSettings(patch),
+      setNotSlop: (id, notSlop) =>
+        void chrome.runtime.sendMessage<RuntimeMessage>({ type: "not-slop", id, notSlop }),
+      showInFeed: async (post) => {
+        const found =
+          tabId !== undefined && (await sendToTab<boolean>(tabId, { type: "reveal", id: post.id }));
+        if (!found) await chrome.tabs.create({ url: post.url });
+      },
+      reloadTab: (id) => void chrome.tabs.reload(id),
+      openX: () => void chrome.tabs.create({ url: "https://x.com/home" }),
+      peekShortcut,
+    }),
+    [tabId, peekShortcut],
+  );
+}
+
+function useShortcut(name: string) {
+  const [shortcut, setShortcut] = useState<string>();
+  useEffect(() => {
+    void chrome.commands.getAll().then((commands) => {
+      setShortcut(commands.find((c) => c.name === name)?.shortcut || undefined);
+    });
+  }, [name]);
+  return shortcut;
 }

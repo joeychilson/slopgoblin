@@ -1,12 +1,13 @@
-import { useMemo } from "preact/hooks";
+import { useMemo } from "react";
 import type { HiddenPost } from "../core/checked.ts";
 import { USD_PER_MILLION_TOKENS } from "../core/decisions.ts";
 import { GOBLIN_GLYPH } from "../core/glyphs.ts";
-import { updateSettings, type Settings as SettingsData } from "../core/settings.ts";
+import type { Settings as SettingsData } from "../core/settings.ts";
 import { store, type Usage } from "../core/storage.ts";
 import { CATEGORIES } from "../core/taxonomy.ts";
 import { ICONS, Icon, Segments, Switch } from "./controls.tsx";
 import { useUsage } from "./hooks.ts";
+import { useHost } from "./host.ts";
 
 type HideMode = SettingsData["hideMode"];
 
@@ -24,33 +25,34 @@ const HIDE_MODES: Record<HideMode, { label: string; hint: string }> = {
 export function Settings(props: { settings: SettingsData; apiKey: string; hidden: HiddenPost[] }) {
   const { settings, apiKey, hidden } = props;
   const usage = useUsage();
+  const host = useHost();
   const byKind = useMemo(() => Map.groupBy(hidden, ({ verdict }) => verdict.category), [hidden]);
 
   return (
-    <div class="settings">
+    <div className="settings">
       <section aria-labelledby="what-title">
-        <h2 id="what-title" class="section-title">
+        <h2 id="what-title" className="section-title">
           What to hide
         </h2>
-        <ul class="rows">
+        <ul className="rows">
           {CATEGORIES.map((category) => {
             const on = settings.categories[category.id];
             const count = byKind.get(category.id)?.length;
             const id = `category-${category.id}`;
             return (
               <li key={category.id}>
-                <label class={on ? "row" : "row is-off"} for={id}>
-                  <span class="row-text">
-                    <span class="row-title">{category.label}</span>
-                    <span class="row-desc">{category.blurb}</span>
+                <label className={on ? "row" : "row is-off"} htmlFor={id}>
+                  <span className="row-text">
+                    <span className="row-title">{category.label}</span>
+                    <span className="row-desc">{category.blurb}</span>
                   </span>
-                  {on && count ? <span class="row-count">{count} hidden</span> : null}
+                  {on && count ? <span className="row-count">{count} hidden</span> : null}
                   <Switch
                     id={id}
                     label={category.label}
                     checked={on}
                     onChange={(next) =>
-                      void updateSettings((s) => ({
+                      host.updateSettings((s) => ({
                         categories: { ...s.categories, [category.id]: next },
                       }))
                     }
@@ -63,7 +65,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
       </section>
 
       <section aria-labelledby="mode-title">
-        <h2 id="mode-title" class="section-title">
+        <h2 id="mode-title" className="section-title">
           When a post is hidden
         </h2>
         <FeedSketch mode={settings.hideMode} />
@@ -75,43 +77,46 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
             value: mode,
             label: HIDE_MODES[mode].label,
           }))}
-          onChange={(hideMode) => void updateSettings(() => ({ hideMode }))}
+          onChange={(hideMode) => host.updateSettings(() => ({ hideMode }))}
         />
-        <p class="hint" key={settings.hideMode}>
+        <p className="hint" key={settings.hideMode}>
           {HIDE_MODES[settings.hideMode].hint}
         </p>
       </section>
 
       <section aria-labelledby="trusted-title">
-        <h2 id="trusted-title" class="section-title">
+        <h2 id="trusted-title" className="section-title">
           Always show
         </h2>
-        <ul class="rows">
+        <ul className="rows">
           <li>
-            <label class={settings.trustFollowing ? "row" : "row is-off"} for="trust-following">
-              <span class="row-text">
-                <span class="row-title">People you follow</span>
-                <span class="row-desc">Never hidden or checked</span>
+            <label
+              className={settings.trustFollowing ? "row" : "row is-off"}
+              htmlFor="trust-following"
+            >
+              <span className="row-text">
+                <span className="row-title">People you follow</span>
+                <span className="row-desc">Never hidden or checked</span>
               </span>
               <Switch
                 id="trust-following"
                 label="People you follow"
                 checked={settings.trustFollowing}
-                onChange={(trustFollowing) => void updateSettings(() => ({ trustFollowing }))}
+                onChange={(trustFollowing) => host.updateSettings(() => ({ trustFollowing }))}
               />
             </label>
           </li>
         </ul>
         {settings.trusted.length ? (
-          <ul class="chips">
+          <ul className="chips">
             {settings.trusted.map((handle) => (
-              <li key={handle} class="chip">
+              <li key={handle} className="chip">
                 @{handle}
                 <button
                   type="button"
                   aria-label={`Stop always showing @${handle}`}
                   onClick={() =>
-                    void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }))
+                    host.updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }))
                   }
                 >
                   <Icon d={ICONS.close} size={14} weight={2.2} />
@@ -120,7 +125,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
             ))}
           </ul>
         ) : (
-          <p class="hint">
+          <p className="hint">
             Accounts you mark with “Always show” are never hidden or checked. They’ll be listed
             here.
           </p>
@@ -128,19 +133,19 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
       </section>
 
       <section aria-labelledby="key-title">
-        <h2 id="key-title" class="section-title">
+        <h2 id="key-title" className="section-title">
           Gemini API key
         </h2>
-        <div class="key">
+        <div className="key">
           <span>
             Key ending in <code>{apiKey.slice(-4)}</code>
           </span>
-          <button type="button" class="button small" onClick={() => void store.apiKey.remove()}>
+          <button type="button" className="button small" onClick={() => void store.apiKey.remove()}>
             Replace
           </button>
         </div>
-        {usage && <p class="hint">{describeUsage(usage)}</p>}
-        <p class="hint">
+        {usage && <p className="hint">{describeUsage(usage)}</p>}
+        <p className="hint">
           Posts you scroll past are sent to Google’s Gemini Decisions API with your key. Answers are
           kept on this device for 30 days, so a post is only sent once. Checked posts are kept in
           memory for this panel until Chrome quits.
@@ -152,14 +157,14 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
 
 function FeedSketch({ mode }: { mode: HideMode }) {
   return (
-    <div class="sketch" data-mode={mode} aria-hidden="true">
-      <i class="sketch-post" />
-      <i class="sketch-bar">
+    <div className="sketch" data-mode={mode} aria-hidden="true">
+      <i className="sketch-post" />
+      <i className="sketch-bar">
         <svg viewBox={GOBLIN_GLYPH.viewBox}>
           <path d={GOBLIN_GLYPH.d} />
         </svg>
       </i>
-      <i class="sketch-post" />
+      <i className="sketch-post" />
     </div>
   );
 }

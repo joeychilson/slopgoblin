@@ -2,21 +2,26 @@
 
 ```sh
 pnpm install
-vp build          # into dist/
-vp run dev        # rebuild on change
-vp check          # format, lint and type check
-vp test           # unit tests: what's hidden, and what's sent to Google
-vp run e2e        # the extension in Chromium, on a mock X page
+vp -C extension build      # into extension/dist/
+vp -C extension run dev    # rebuild on change
+vp -C site dev             # the website, on localhost:5175
+vp check                   # format, lint and type check
+vp test                    # unit tests: what's hidden, what's sent to Google, and the website
+vp run e2e                 # the extension in Chromium, on a mock X page
 ```
 
-Load `dist/` with **Load unpacked** on `chrome://extensions` (Developer mode on), and hit
+The repo is a pnpm workspace: the extension is in `extension/`, and its website,
+slopgoblin.app, is in `site/`. The format, lint and test settings for both are in the root
+`vite.config.ts`.
+
+Load `extension/dist/` with **Load unpacked** on `chrome://extensions` (Developer mode on), and hit
 the extension's reload button after each build. A tab that was open before a reload has to be
 reloaded too; the side panel offers to.
 
-`vp run e2e` builds, then loads `dist/` into headless Chromium with Playwright and runs it on a
-mock X timeline, with X's API and the Decisions API mocked (`e2e/`). That's the content script,
+`vp run e2e` builds, then loads `extension/dist/` into headless Chromium with Playwright and runs
+it on a mock X timeline, with X's API and the Decisions API mocked (`extension/e2e/`). That's the content script,
 the service worker and the side panel together, which the unit tests can't reach. The first
-time, install the browser: `vp exec playwright install chromium`. The mock page is X as
+time, install the browser: `vp -C extension exec playwright install chromium`. The mock page is X as
 `sites/x.ts` reads it, so only x.com shows whether X has changed its markup.
 
 The toolchain is [Vite+](https://viteplus.dev): `vp` wraps Vite (build), Vitest (test),
@@ -32,7 +37,7 @@ page script (X's own page)
 content script (x.com)            service worker                    Gemini
  sites/x.ts  reads posts   ──►    classifier.ts  cache + queue  ──►  Decisions API
  feed.ts     tracks them   ◄──    cache.ts       IndexedDB
- bar.ts      hides them    ──►    checked.ts     the list ──► side panel (Preact)
+ bar.ts      hides them    ──►    checked.ts     the list ──► side panel (React)
         ▲                                                         │
         └────────── settings (chrome.storage.sync) ◄─────────────┘
 ```
@@ -93,7 +98,7 @@ content script (x.com)            service worker                    Gemini
 ## Tuning the filter
 
 The questions, the description of each option and the probability each strictness needs
-live in `src/core/taxonomy.ts`. The eval sends labeled posts through the same code the
+live in `extension/src/core/taxonomy.ts`. The eval sends labeled posts through the same code the
 extension runs and reports, per strictness, how many real posts were hidden by mistake and
 how much junk was caught. It also reports what a reader gets with only one category switched
 on, or one switched off:
@@ -105,17 +110,17 @@ vp run eval --misses           # also list every mistake at "balanced"
 vp run eval --misses strict    # …or at another strictness
 ```
 
-Answers are cached in `eval/.cache.json`, so a rerun only pays for posts whose question
+Answers are cached in `extension/eval/.cache.json`, so a rerun only pays for posts whose question
 changed. The model is deterministic: the same request gets the same probabilities. Google
 fetches images afresh each time, though, so a few posts with images come back a little
 different from one run to the next (8 of 1,244 the last time).
 
-There are two kinds of test post, in the same format (`eval/LABELING.md`):
+There are two kinds of test post, in the same format (`extension/eval/LABELING.md`):
 
-- `eval/posts.jsonl` has 326 written to order, among them hard negatives (strong opinions,
+- `extension/eval/posts.jsonl` has 326 written to order, among them hard negatives (strong opinions,
   real breaking news, people sharing their own work, real posts under a community note) and
   prompt-injection attempts.
-- `eval/real/*.jsonl` holds posts collected from real timelines, reply threads, news accounts,
+- `extension/eval/real/*.jsonl` holds posts collected from real timelines, reply threads, news accounts,
   searches and X's list of posts with community notes, with their images. Those are other
   people's posts, so the folder is gitignored; put your own there. Real posts are what the
   wording should be tuned on. The written ones are easier than a real feed and flatter every
@@ -219,24 +224,55 @@ tells people each strictness costs, and the numbers in the README.
 
 ## Adding a site
 
-1. Implement `SiteAdapter` (`src/sites/site.ts`): find post elements, read one into a `Post`,
-   and name the element to collapse. `src/sites/x.ts` is the reference. `watchData` is
-   optional; it needs a part in the site's own page, listed in `IN_PAGE` in
-   `src/content/page.ts`.
-2. Add it to `SITES` in `src/content/index.ts`.
+Paths here are in `extension/src/`.
+
+1. Implement `SiteAdapter` (`sites/site.ts`): find post elements, read one into a `Post`, and
+   name the element to collapse. `sites/x.ts` is the reference. `watchData` is optional; it
+   needs a part in the site's own page, listed in `IN_PAGE` in `content/page.ts`.
+2. Add it to `SITES` in `content/index.ts`.
 3. Add the site to both `content_scripts` entries' `matches` and to `host_permissions` in
-   `public/manifest.json`.
-4. Generalize the X-specific copy: `QUESTION` in `src/core/taxonomy.ts`, the first line of
-   `describePost` and the wording of `describeNote` in `src/core/decisions.ts`, and a few
-   strings in the side panel.
+   `extension/public/manifest.json`.
+4. Generalize the X-specific copy: `QUESTION` in `core/taxonomy.ts`, the first line of
+   `describePost` and the wording of `describeNote` in `core/decisions.ts`, and a few strings
+   in the side panel.
 5. Say what's read from the site in `PRIVACY.md`.
 
 If most posts on a page can't be read, usually because the site changed its markup, the side
 panel says so instead of failing silently.
 
+## The website
+
+slopgoblin.app is a TanStack Start app in `site/`. The build prerenders the page, and a
+Cloudflare Worker serves it and answers 404s. CI deploys it after every push to `main` that
+passes, with the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets. `pnpm install`
+generates the Worker's types into `site/.cloudflare/`; after changing
+`site/cloudflare.config.ts`, run `vp -C site run prepare`.
+
+The page is built from the extension, so it can't drift from it:
+
+- Its side panel is the real one (`Den`, `Home` and `Lurker` in `extension/src/sidepanel/`),
+  given a demo `Host` in place of Chrome.
+- What its feed hides, and how each bar reads, come from `hiddenAmong`, `judge` and `reason`
+  in `core/`.
+- Its colors and type are the side panel's `tokens.css`. That's why the panel's own rules in
+  `panel.css` are scoped to `.den`.
+
+Only the bar a hidden post folds into is a copy, since `content/bar.ts` is plain DOM in X's
+page.
+
+| Path                         | What it is                                                              |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `site/src/routes/index.tsx`  | The page                                                                |
+| `site/src/routes/__root.tsx` | The document, the header and footer, and the 404                        |
+| `site/src/hooks/use-demo.ts` | What the goblin has read, the settings, and what the reader let through |
+| `site/src/lib/demo.ts`       | The feed's made-up posts                                                |
+| `site/src/components/demo/`  | The feed, one post in it with its bar, and the side panel               |
+| `site/src/styles/app.css`    | The page's styles, on top of the side panel's                           |
+| `site/test/pages.test.ts`    | The page and the 404, served by the Worker                              |
+
 ## Releasing
 
-1. Raise `version` in `public/manifest.json` and add a section for it at the top of
+1. Raise `version` in `extension/public/manifest.json` and add a section for it at the top of
    `CHANGELOG.md`.
 2. Merge to `main`, then tag that commit `v<version>` and push the tag.
 3. The Release workflow checks the tag, runs the checks, builds, and publishes a GitHub

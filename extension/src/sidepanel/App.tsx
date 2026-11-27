@@ -1,24 +1,24 @@
-import type { ComponentChildren } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { hiddenAmong } from "../core/checked.ts";
-import { updateSettings, type Settings as SettingsData } from "../core/settings.ts";
+import type { Settings as SettingsData } from "../core/settings.ts";
 import { store, type ServiceStatus } from "../core/storage.ts";
-import { ICONS, Icon, Switch } from "./controls.tsx";
+import { ICONS, Icon } from "./controls.tsx";
 import { Den } from "./Den.tsx";
-import { HiddenList } from "./HiddenList.tsx";
+import { Home, HomeTop } from "./Home.tsx";
 import {
   useActiveTab,
   useApiKey,
   useChecked,
+  useChromeHost,
   useSettings,
   useSiteTheme,
   useStatus,
   useTicker,
 } from "./hooks.ts";
+import { HostContext } from "./host.ts";
 import { Lurker } from "./Lurker.tsx";
 import { Settings } from "./Settings.tsx";
 import { Setup } from "./Setup.tsx";
-import { Summary } from "./Summary.tsx";
 
 export function App() {
   const settings = useSettings();
@@ -29,83 +29,71 @@ export function App() {
   return <Main settings={settings} apiKey={apiKey} />;
 }
 
-type View = "home" | "settings";
+/** Which view is showing, and the side it came in from when the reader switched to it. */
+interface View {
+  name: "home" | "settings";
+  from?: "left" | "right";
+}
 
 function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) {
   const status = useStatus();
   const tab = useActiveTab();
   const checked = useChecked();
+  const host = useChromeHost(tab);
   const hidden = useMemo(() => hiddenAmong(checked ?? [], settings), [checked, settings]);
-  const [view, setView] = useState<View>("home");
+  const [view, setView] = useState<View>({ name: "home" });
 
   // Settings slides in from the right, and home comes back from the left. Switching
   // also lands keyboard focus on the button that switches back.
-  const switched = useRef(false);
   useEffect(() => {
-    if (!switched.current) return;
+    if (!view.from) return;
     window.scrollTo(0, 0);
     document.querySelector<HTMLElement>(".top .icon-button")?.focus();
   }, [view]);
-  const go = (next: View) => {
-    switched.current = true;
-    setView(next);
-  };
-  const from = switched.current ? (view === "settings" ? "right" : "left") : undefined;
 
   const header =
-    view === "settings" ? (
-      <div class="top-row" key="settings">
-        <button type="button" class="icon-button" aria-label="Back" onClick={() => go("home")}>
-          <Icon d={ICONS.back} />
-        </button>
-        <h1 class="top-title">Settings</h1>
-      </div>
-    ) : (
-      <div class="top-row" key="home">
-        <h1 class="wordmark">Slop Goblin</h1>
+    view.name === "settings" ? (
+      <div className="top-row" key="settings">
         <button
           type="button"
-          class="icon-button"
-          aria-label="Settings"
-          onClick={() => go("settings")}
+          className="icon-button"
+          aria-label="Back"
+          onClick={() => setView({ name: "home", from: "left" })}
         >
-          <Icon d={ICONS.settings} />
+          <Icon d={ICONS.back} />
         </button>
-        <Switch
-          label="Filtering"
-          checked={settings.enabled}
-          onChange={(enabled) => updateSettings(() => ({ enabled }))}
-        />
+        <h1 className="top-title">Settings</h1>
       </div>
+    ) : (
+      <HomeTop
+        key="home"
+        enabled={settings.enabled}
+        onSettings={() => setView({ name: "settings", from: "right" })}
+      />
     );
 
   return (
-    <Den
-      header={header}
-      goblin={<Lurker awake={settings.enabled} fed={checked && hidden.length} />}
-    >
-      <div class="sheet-body" key={view} data-from={from}>
-        {view === "settings" ? (
-          <Settings settings={settings} apiKey={apiKey} hidden={hidden} />
-        ) : (
-          // Nothing until the list and active tab have loaded, so empty states don't flash.
-          checked &&
-          tab !== undefined && (
-            <>
-              <Notice status={status} broken={tab?.state?.broken} enabled={settings.enabled} />
-              <Summary tab={tab} settings={settings} checked={checked} />
-              {settings.enabled && (
-                <HiddenList
-                  hidden={hidden}
-                  tabId={tab?.state ? tab.id : undefined}
-                  peek={settings.peek}
-                />
-              )}
-            </>
-          )
-        )}
-      </div>
-    </Den>
+    <HostContext value={host}>
+      <Den
+        header={header}
+        goblin={<Lurker awake={settings.enabled} fed={checked && hidden.length} />}
+      >
+        <div className="sheet-body" key={view.name} data-from={view.from}>
+          {view.name === "settings" ? (
+            <Settings settings={settings} apiKey={apiKey} hidden={hidden} />
+          ) : (
+            // Nothing until the list and active tab have loaded, so empty states don't flash.
+            checked &&
+            tab !== undefined && (
+              <>
+                <Notice status={status} broken={tab?.state?.broken} enabled={settings.enabled} />
+                <Home settings={settings} checked={checked} hidden={hidden} tab={tab} />
+              </>
+            )
+          )}
+        </div>
+      </Den>
+    </HostContext>
   );
 }
 
@@ -113,7 +101,7 @@ interface NoticeContent {
   title: string;
   body: string;
   error?: boolean;
-  action?: ComponentChildren;
+  action?: ReactNode;
 }
 
 function Notice(props: { status: ServiceStatus; broken?: boolean; enabled: boolean }) {
@@ -123,7 +111,7 @@ function Notice(props: { status: ServiceStatus; broken?: boolean; enabled: boole
   if (!notice) return null;
   return (
     <div
-      class={notice.error ? "notice is-error" : "notice"}
+      className={notice.error ? "notice is-error" : "notice"}
       role={notice.error ? "alert" : undefined}
     >
       <p>
@@ -148,7 +136,7 @@ function noticeFor(
       body: status.message,
       error: true,
       action: (
-        <button type="button" class="button small" onClick={() => void store.apiKey.remove()}>
+        <button type="button" className="button small" onClick={() => void store.apiKey.remove()}>
           Replace key
         </button>
       ),

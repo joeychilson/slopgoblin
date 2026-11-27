@@ -44,7 +44,7 @@ Open source: https://github.com/joeychilson/slopgoblin
 
 **Graphics:**
 
-- Store icon: `public/icons/128.png`.
+- Store icon: `extension/public/icons/128.png`.
 - Screenshots, 1280×800: the three in [`store/`](store/), in order. They show the extension
   over a feed of made-up posts, so no real person's post is labeled as junk.
 

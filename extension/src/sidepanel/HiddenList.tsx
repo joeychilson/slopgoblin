@@ -1,12 +1,17 @@
-import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import type { CheckedPost, HiddenPost } from "../core/checked.ts";
-import type { RuntimeMessage } from "../core/messages.ts";
 import { reason } from "../core/policy.ts";
 import { displayName } from "../core/post.ts";
-import { updateSettings } from "../core/settings.ts";
 import { CATEGORIES, CATEGORY, type CategoryId } from "../core/taxonomy.ts";
 import { ICONS, Icon } from "./controls.tsx";
-import { sendToTab } from "./hooks.ts";
+import { useHost } from "./host.ts";
 
 /** Matches `row-out` in panel.css. */
 const LEAVE_MS = 240;
@@ -36,8 +41,9 @@ interface Settling {
   gone?: boolean;
 }
 
-export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: boolean }) {
-  const { tabId, hidden, peek } = props;
+export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
+  const { hidden, peek } = props;
+  const host = useHost();
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState<CategoryId | "">("");
   const [choosing, setChoosing] = useState(false);
@@ -81,10 +87,9 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
   const visible = shown.slice(0, limit);
   const remaining = shown.length - visible.length;
 
-  useEffect(() => {
-    if (filter && !active) setFilter("");
-    if (choosing && !canFilter) setChoosing(false);
-  }, [filter, active, choosing, canFilter]);
+  // A kind that has no posts left can't stay chosen, and one kind alone has nothing to choose from.
+  if (filter && !active) setFilter("");
+  if (choosing && !canFilter) setChoosing(false);
 
   // The kinds close on a click anywhere else, like a menu.
   useEffect(() => {
@@ -166,9 +171,9 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     const { id } = item.post;
     const handle = item.post.handle.toLowerCase();
     if (action === "not-slop") {
-      void chrome.runtime.sendMessage<RuntimeMessage>({ type: "not-slop", id, notSlop: true });
+      host.setNotSlop(id, true);
     } else {
-      void updateSettings((s) => ({ trusted: [...new Set([...s.trusted, handle])] }));
+      host.updateSettings((s) => ({ trusted: [...new Set([...s.trusted, handle])] }));
     }
     // The author's other posts go too, and fold away now.
     const others =
@@ -213,9 +218,9 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
     const { item, action } = settled;
     const handle = item.post.handle.toLowerCase();
     if (action === "not-slop") {
-      void chrome.runtime.sendMessage<RuntimeMessage>({ type: "not-slop", id, notSlop: false });
+      host.setNotSlop(id, false);
     } else {
-      void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
+      host.updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
     }
     const restored = [
       id,
@@ -257,14 +262,14 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
 
   const heading = active ? CATEGORY[active].label : "Hidden posts";
   return (
-    <section class="hidden" aria-labelledby="hidden-title">
-      <div class="list-head">
+    <section className="hidden" aria-labelledby="hidden-title">
+      <div className="list-head">
         <h2 id="hidden-title">
           {canFilter ? (
             <button
               ref={title}
               type="button"
-              class="list-title"
+              className="list-title"
               aria-expanded={choosing}
               aria-controls={kindsId}
               title="Show one kind"
@@ -281,7 +286,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
                 }
               }}
             >
-              <span key={heading} class="list-title-text">
+              <span key={heading} className="list-title-text">
                 {heading}
               </span>
               <Icon d={ICONS.chevron} size={16} weight={2.4} />
@@ -296,13 +301,13 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
       {canFilter && (
         <div
           ref={picker}
-          class={choosing ? "unfold kinds is-open" : "unfold kinds"}
+          className={choosing ? "unfold kinds is-open" : "unfold kinds"}
           id={kindsId}
           inert={!choosing}
         >
           <div>
             <ul
-              class="rows"
+              className="rows"
               aria-label="Show"
               onKeyDown={(event) =>
                 onKindsKey(event, kindsId, () => {
@@ -329,7 +334,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
 
       {visible.length > 0 ? (
         <ul
-          class="list"
+          className="list"
           onKeyDown={(event) => {
             if (event.key !== "Escape" || !open) return;
             // Focus goes back to the post, not off the page with its closing actions.
@@ -349,7 +354,6 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
               <Item
                 key={id}
                 item={item}
-                tabId={tabId}
                 order={opening.current ? Math.min(i, 10) : -1}
                 open={open === id}
                 settled={settled && !settled.undone && !settled.quiet ? settled.action : undefined}
@@ -365,7 +369,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; tabId?: number; peek: 
           })}
         </ul>
       ) : (
-        <p class="hint">Nothing hidden right now.</p>
+        <p className="hint">Nothing hidden right now.</p>
       )}
     </section>
   );
@@ -376,15 +380,15 @@ function Kind(props: { label: string; count: number; on: boolean; i: number; onP
     <li>
       <button
         type="button"
-        class="row"
+        className="row"
         aria-pressed={props.on}
-        style={`--i: ${props.i}`}
+        style={{ "--i": props.i }}
         onClick={props.onPick}
       >
-        <span class="row-text">
-          <span class="row-title">{props.label}</span>
+        <span className="row-text">
+          <span className="row-title">{props.label}</span>
         </span>
-        <span class="row-count">{props.count}</span>
+        <span className="row-count">{props.count}</span>
       </button>
     </li>
   );
@@ -395,7 +399,7 @@ function focusKind(trayId: string, index: number) {
   if (kinds.length) kinds[(index + kinds.length) % kinds.length]!.focus();
 }
 
-function onKindsKey(event: KeyboardEvent, trayId: string, close: () => void) {
+function onKindsKey(event: ReactKeyboardEvent, trayId: string, close: () => void) {
   const kinds = [...document.querySelectorAll<HTMLElement>(`[id="${trayId}"] .row`)];
   const at = kinds.indexOf(document.activeElement as HTMLElement);
   const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: kinds.length - 1 }[event.key];
@@ -409,25 +413,24 @@ function onKindsKey(event: KeyboardEvent, trayId: string, close: () => void) {
 }
 
 function Peek({ on }: { on: boolean }) {
-  const shortcut = useShortcut("toggle-peek");
+  const host = useHost();
   return (
     <button
       type="button"
-      class="peek"
+      className="peek"
       aria-pressed={on}
       title="Show hidden posts in the feed, with a label"
-      onClick={() => void updateSettings(() => ({ peek: !on }))}
+      onClick={() => host.updateSettings(() => ({ peek: !on }))}
     >
       <Icon d={ICONS.eye} size={16} />
       Peek in feed
-      {shortcut && <kbd>{shortcut}</kbd>}
+      {host.peekShortcut && <kbd>{host.peekShortcut}</kbd>}
     </button>
   );
 }
 
 function Item(props: {
   item: HiddenPost;
-  tabId?: number;
   order: number;
   open: boolean;
   settled?: LetThrough;
@@ -436,7 +439,8 @@ function Item(props: {
   onLetThrough: (action: LetThrough) => void;
   onUndo: () => void;
 }) {
-  const { item, tabId, open, settled, leaving, onToggle } = props;
+  const { item, open, settled, leaving, onToggle } = props;
+  const host = useHost();
   const { post, verdict } = item;
   const [order] = useState(props.order);
   const row = useRef<HTMLLIElement>(null);
@@ -454,51 +458,45 @@ function Item(props: {
     return () => clearTimeout(timer);
   }, [open]);
 
-  async function showInFeed() {
-    const found =
-      tabId !== undefined && (await sendToTab<boolean>(tabId, { type: "reveal", id: post.id }));
-    if (!found) await chrome.tabs.create({ url: post.url });
-  }
-
   const classes = ["item", open && "is-open", settled && "is-settled", leaving && "is-leaving"]
     .filter(Boolean)
     .join(" ");
   return (
     <li
       ref={row}
-      class={classes}
+      className={classes}
       data-id={post.id}
-      style={order >= 0 ? `--order: ${order}` : undefined}
+      style={order >= 0 ? { "--order": order } : undefined}
     >
-      <div class="item-inner">
+      <div className="item-inner">
         {settled ? (
           <Settled post={post} nsfw={isNsfw} action={settled} onUndo={props.onUndo} />
         ) : (
           <>
             <button
               type="button"
-              class="item-open"
+              className="item-open"
               aria-expanded={open}
               aria-controls={actionsId}
               onClick={() => onToggle(!open)}
             >
               <Avatar post={post} nsfw={isNsfw} />
-              <span class="item-body">
-                <span class="item-line">
-                  <span class="item-name">{name}</span>
-                  <span class={verdict.labeled || possibly ? "item-why is-quiet" : "item-why"}>
+              <span className="item-body">
+                <span className="item-line">
+                  <span className="item-name">{name}</span>
+                  <span className={verdict.labeled || possibly ? "item-why is-quiet" : "item-why"}>
                     {possibly ? `Possibly ${midSentence}` : label}
                   </span>
                 </span>
-                <span class={isNsfw || !post.text ? "item-text is-empty" : "item-text"}>
+                <span className={isNsfw || !post.text ? "item-text is-empty" : "item-text"}>
                   {isNsfw ? "Text hidden" : post.text || "Media only"}
                 </span>
               </span>
             </button>
-            <div class={open ? "unfold is-open" : "unfold"} id={actionsId} inert={!open}>
+            <div className={open ? "unfold is-open" : "unfold"} id={actionsId} inert={!open}>
               <div>
-                <div class="tray">
-                  <button type="button" style="--i: 0" onClick={showInFeed}>
+                <div className="tray">
+                  <button type="button" style={{ "--i": 0 }} onClick={() => host.showInFeed(post)}>
                     <Icon d={ICONS.eye} size={16} />
                     <span>Show in feed</span>
                   </button>
@@ -506,7 +504,7 @@ function Item(props: {
                     <>
                       <button
                         type="button"
-                        style="--i: 1"
+                        style={{ "--i": 1 }}
                         onClick={() => props.onLetThrough("not-slop")}
                       >
                         <Icon d={ICONS.check} size={16} />
@@ -514,7 +512,7 @@ function Item(props: {
                       </button>
                       <button
                         type="button"
-                        style="--i: 2"
+                        style={{ "--i": 2 }}
                         onClick={() => props.onLetThrough("trust")}
                       >
                         <Icon d={ICONS.trust} size={16} />
@@ -534,14 +532,14 @@ function Item(props: {
 
 /** The author's photo; their initial when there's none, or it doesn't load. */
 function Avatar({ post, nsfw }: { post: CheckedPost; nsfw: boolean }) {
-  const [broken, setBroken] = useState(false);
-  useEffect(() => setBroken(false), [post.avatar]);
+  // The one that failed, so a new photo gets its own try.
+  const [broken, setBroken] = useState<string>();
   const initial = displayName(post).replace(/^@/, "").trim().charAt(0).toUpperCase();
   return (
-    <span class="avatar" aria-hidden="true">
+    <span className="avatar" aria-hidden="true">
       {nsfw ? (
         <Icon d={ICONS.eyeOff} size={16} />
-      ) : post.avatar && !broken ? (
+      ) : post.avatar && post.avatar !== broken ? (
         <img
           src={post.avatar}
           alt=""
@@ -549,10 +547,10 @@ function Avatar({ post, nsfw }: { post: CheckedPost; nsfw: boolean }) {
           height="32"
           loading="lazy"
           decoding="async"
-          onError={() => setBroken(true)}
+          onError={() => setBroken(post.avatar)}
         />
       ) : (
-        <span class="avatar-initial">{initial}</span>
+        <span className="avatar-initial">{initial}</span>
       )}
     </span>
   );
@@ -570,22 +568,22 @@ function Settled(props: {
   const name = displayName(props.post);
   useEffect(() => undoButton.current?.focus(), []);
   return (
-    <div class="item-settled">
+    <div className="item-settled">
       <Avatar post={props.post} nsfw={props.nsfw} />
-      <span class="item-body">
-        <span class="item-line">
-          <span class="item-name">{name}</span>
+      <span className="item-body">
+        <span className="item-line">
+          <span className="item-name">{name}</span>
           <button
             ref={undoButton}
             type="button"
-            class="item-why item-undo"
+            className="item-why item-undo"
             aria-describedby={messageId}
             onClick={props.onUndo}
           >
             Undo
           </button>
         </span>
-        <span id={messageId} class="item-text">
+        <span id={messageId} className="item-text">
           {props.action === "trust"
             ? `Posts from ${name} will always show`
             : "This post won't be hidden again"}
@@ -593,14 +591,4 @@ function Settled(props: {
       </span>
     </div>
   );
-}
-
-function useShortcut(name: string) {
-  const [shortcut, setShortcut] = useState<string>();
-  useEffect(() => {
-    void chrome.commands.getAll().then((commands) => {
-      setShortcut(commands.find((c) => c.name === name)?.shortcut || undefined);
-    });
-  }, [name]);
-  return shortcut;
 }

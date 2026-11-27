@@ -1,10 +1,10 @@
-import type { ComponentChildren } from "preact";
-import { useMemo } from "preact/hooks";
+import { useMemo, type ReactNode } from "react";
 import { hiddenAtEach, type CheckedPost } from "../core/checked.ts";
-import { updateSettings, type Settings } from "../core/settings.ts";
+import type { Settings } from "../core/settings.ts";
 import { STRICTNESS, TRADEOFF, type Strictness } from "../core/taxonomy.ts";
 import { Segments } from "./controls.tsx";
 import type { ActiveTab } from "./hooks.ts";
+import { useHost } from "./host.ts";
 
 export function Summary(props: {
   tab: ActiveTab | null;
@@ -12,6 +12,7 @@ export function Summary(props: {
   checked: CheckedPost[];
 }) {
   const { tab, settings, checked } = props;
+  const host = useHost();
   const counts = useMemo(
     () => (settings.enabled && checked.length ? hiddenAtEach(checked, settings) : undefined),
     [checked, settings],
@@ -20,7 +21,7 @@ export function Summary(props: {
   // Strictness changes nothing while filtering is off, so omit it.
   if (!settings.enabled) {
     return (
-      <section class="summary" aria-label="Summary">
+      <section className="summary" aria-label="Summary">
         <Message title="Filtering is off">
           Nothing is hidden, and no posts are sent to Google.
         </Message>
@@ -33,11 +34,11 @@ export function Summary(props: {
   const reloadId = onX && tab && !tab.state && !tab.loading ? tab.id : undefined;
 
   return (
-    <section class="summary" aria-label="Summary">
+    <section className="summary" aria-label="Summary">
       {reloadId !== undefined ? (
         <Message
           title="Reload to start"
-          action={<Button onClick={() => chrome.tabs.reload(reloadId)}>Reload tab</Button>}
+          action={<Button onClick={() => host.reloadTab(reloadId)}>Reload tab</Button>}
         >
           This tab was open before Slop Goblin was.
         </Message>
@@ -46,14 +47,7 @@ export function Summary(props: {
       ) : onX ? (
         <Message title="Nothing checked yet">Posts get checked as you scroll.</Message>
       ) : (
-        <Message
-          title="Not on X"
-          action={
-            <Button onClick={() => chrome.tabs.create({ url: "https://x.com/home" })}>
-              Open x.com
-            </Button>
-          }
-        >
+        <Message title="Not on X" action={<Button onClick={host.openX}>Open x.com</Button>}>
           Open X and the goblin starts checking posts.
         </Message>
       )}
@@ -66,9 +60,9 @@ export function Summary(props: {
           label: level[0]!.toUpperCase() + level.slice(1),
           count: counts?.[level],
         }))}
-        onChange={(strictness) => void updateSettings(() => ({ strictness }))}
+        onChange={(strictness) => host.updateSettings(() => ({ strictness }))}
       />
-      <p class="trade" key={settings.strictness}>
+      <p className="trade" key={settings.strictness}>
         {TRADEOFF[settings.strictness]}
       </p>
     </section>
@@ -77,7 +71,7 @@ export function Summary(props: {
 
 function Caption(props: { checked: number; pending: number }) {
   return (
-    <div class="caption">
+    <div className="caption">
       <h2>Hidden lately</h2>
       <span>
         {props.checked.toLocaleString()} checked
@@ -87,13 +81,9 @@ function Caption(props: { checked: number; pending: number }) {
   );
 }
 
-function Message(props: {
-  title: string;
-  children?: ComponentChildren;
-  action?: ComponentChildren;
-}) {
+function Message(props: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div class="message">
+    <div className="message">
       <h2>{props.title}</h2>
       <p>{props.children}</p>
       {props.action}
@@ -101,9 +91,9 @@ function Message(props: {
   );
 }
 
-function Button(props: { onClick: () => void; children: ComponentChildren }) {
+function Button(props: { onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" class="button primary" onClick={props.onClick}>
+    <button type="button" className="button primary" onClick={props.onClick}>
       {props.children}
     </button>
   );

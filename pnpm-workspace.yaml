@@ -1,6 +1,18 @@
+packages:
+  - extension
+  - site
+
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@1.6.0
   vite-plus: 1.6.0
+  typescript: ~7.0.2
+  "@types/node": ^26.6.6
+  react: 19.3.1
+  react-dom: 19.3.1
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  "@fontsource-variable/bricolage-grotesque": ^5.3.0
+
 overrides:
   vite@*: "catalog:"
 peerDependencyRules:
@@ -8,3 +20,7 @@ peerDependencyRules:
     - vite
   allowedVersions:
     vite: "*"
+allowBuilds:
+  esbuild: true
+  workerd: true
+  sharp: true

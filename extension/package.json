@@ -1,0 +1,28 @@
+{
+  "name": "@slopgoblin/extension",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "dev": "vp build --watch",
+    "eval": "node --env-file-if-exists=../.env.local eval/run.ts",
+    "e2e": "vp build && vp test --dir e2e"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.7",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "playwright": "^1.65.1",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

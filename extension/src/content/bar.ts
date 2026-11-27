@@ -1,26 +1,7 @@
 import { EYE_OFF, GOBLIN_GLYPH } from "../core/glyphs.ts";
-import { reason, type Verdict } from "../core/policy.ts";
-import { displayName, type Post } from "../core/post.ts";
-
-type Author = Post["author"];
-
-export type View =
-  | { mode: "shown" }
-  | { mode: "removed" }
-  | {
-      mode: "collapsed" | "revealed";
-      id: string;
-      author: Author;
-      /** Missing until the site has loaded it. */
-      avatar?: string;
-      verdict: Verdict;
-      /** Revealed by peek mode rather than by the user, so there's nothing to re-hide. */
-      peek: boolean;
-    }
-  /** A post the reader let through, with a line saying so and a way back. */
-  | { mode: "confirmed"; id: string; author: Author; action: "not-slop" | "trust" };
-
-export type BarAction = "reveal" | "hide" | "not-slop" | "trust" | "undo";
+import { letThroughNote, reason } from "../core/policy.ts";
+import { displayName } from "../core/post.ts";
+import type { BarAction, View } from "./view.ts";
 
 /** Applies a view to a post's container. Hiding is pure CSS keyed off `data-sg`. */
 export function renderCell(cell: HTMLElement, view: View) {
@@ -48,11 +29,11 @@ export function renderCell(cell: HTMLElement, view: View) {
 function row(view: Exclude<View, { mode: "shown" | "removed" }>) {
   const name = displayName(view.author);
   if (view.mode === "confirmed") {
-    const message =
-      view.action === "trust"
-        ? `Posts from ${name} will always show`
-        : "This post won't be hidden again";
-    return context(message, [], button("undo", "sg-link sg-primary", "Undo"));
+    return context(
+      letThroughNote(view.action, name),
+      [],
+      button("undo", "sg-link sg-primary", "Undo"),
+    );
   }
 
   const { category } = view.verdict;

@@ -28,6 +28,13 @@ export function reason({ category, score }: Verdict) {
   };
 }
 
+/** How the reader let a post through: it isn't junk, or its author's posts always show. */
+export type LetThrough = "not-slop" | "trust";
+
+/** The line a let-through leaves, the same in the feed and in the side panel. */
+export const letThroughNote = (action: LetThrough, name: string) =>
+  action === "trust" ? `Posts from ${name} will always show` : "This post won't be hidden again";
+
 /** What a post's verdict rests on: the model's answer, the site's labels, and who posted it. */
 export interface Judged {
   scores: Scores;

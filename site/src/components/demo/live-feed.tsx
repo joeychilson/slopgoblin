@@ -8,8 +8,8 @@ import { posts } from "@/lib/demo";
 
 /**
  * A feed with the side panel's goblin peeking over it, folding the junk away one post after another
- * once it's in view. The feed keeps one height, fading out whatever's below, so nothing under it
- * moves as posts fold and open.
+ * once it's in view. The feed keeps one height and scrolls inside it, so nothing under it moves as
+ * posts fold and open.
  */
 export function LiveFeed({ demo }: { demo: Demo }) {
   const feed = useRef<HTMLOListElement>(null);
@@ -20,11 +20,11 @@ export function LiveFeed({ demo }: { demo: Demo }) {
         <Lurker awake={demo.settings.enabled} fed={demo.hidden.length} />
       </div>
       <ol ref={feed} id="feed" className="feed" aria-label="A feed, with Slop Goblin on it">
-        {posts.map((post, i) => (
+        {posts.map((post) => (
           <FeedPost
             key={post.id}
             post={post}
-            view={demo.viewOf(post, i)}
+            view={demo.viewOf(post)}
             onAction={(action) => demo.act(post, action)}
           />
         ))}

@@ -7,8 +7,9 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { CheckedPost, HiddenPost } from "../core/checked.ts";
-import { reason } from "../core/policy.ts";
+import { letThroughNote, reason, type LetThrough } from "../core/policy.ts";
 import { displayName } from "../core/post.ts";
+import { trusting } from "../core/settings.ts";
 import { CATEGORIES, CATEGORY, type CategoryId } from "../core/taxonomy.ts";
 import { ICONS, Icon } from "./controls.tsx";
 import { useHost } from "./host.ts";
@@ -22,8 +23,6 @@ const SETTLE_MS = 5000;
 /** An undone row waits this long at most for the list to have it back. */
 const RESTORE_MS = 2000;
 const PAGE_SIZE = 50;
-
-type LetThrough = "not-slop" | "trust";
 
 /**
  * A row the reader just let through. It stays where it was, saying what happened with an Undo,
@@ -170,11 +169,8 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   function letThrough(item: HiddenPost, action: LetThrough) {
     const { id } = item.post;
     const handle = item.post.handle.toLowerCase();
-    if (action === "not-slop") {
-      host.setNotSlop(id, true);
-    } else {
-      host.updateSettings((s) => ({ trusted: [...new Set([...s.trusted, handle])] }));
-    }
+    if (action === "not-slop") host.setNotSlop(id, true);
+    else host.updateSettings(trusting(handle, true));
     // The author's other posts go too, and fold away now.
     const others =
       action === "trust"
@@ -193,7 +189,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   }
 
   function leave(id: string) {
-    const row = document.querySelector(`.item[data-id="${CSS.escape(id)}"]`);
+    const row = rowOf(id);
     // Not from under a pointer that may be on its way to Undo.
     if (row?.matches(":hover")) return later(id, 1000, () => leave(id));
     // Keyboard focus on the row moves on to the next one rather than falling off the page.
@@ -217,11 +213,8 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     if (!settled) return;
     const { item, action } = settled;
     const handle = item.post.handle.toLowerCase();
-    if (action === "not-slop") {
-      host.setNotSlop(id, false);
-    } else {
-      host.updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
-    }
+    if (action === "not-slop") host.setNotSlop(id, false);
+    else host.updateSettings(trusting(handle, false));
     const restored = [
       id,
       ...(action === "trust"
@@ -240,9 +233,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     });
     for (const otherId of restored) later(otherId, RESTORE_MS, () => drop(otherId));
     // Focus stays on the row, now hidden again.
-    requestAnimationFrame(() =>
-      document.querySelector<HTMLElement>(`.item[data-id="${CSS.escape(id)}"] .item-open`)?.focus(),
-    );
+    focusRow(id);
   }
 
   /** One thing open at a time: the kinds, or a post. */
@@ -338,13 +329,8 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
           onKeyDown={(event) => {
             if (event.key !== "Escape" || !open) return;
             // Focus goes back to the post, not off the page with its closing actions.
-            const closing = open;
             setOpen(null);
-            requestAnimationFrame(() =>
-              document
-                .querySelector<HTMLElement>(`.item[data-id="${CSS.escape(closing)}"] .item-open`)
-                ?.focus(),
-            );
+            focusRow(open);
           }}
         >
           {visible.map((item, i) => {
@@ -556,6 +542,12 @@ function Avatar({ post, nsfw }: { post: CheckedPost; nsfw: boolean }) {
   );
 }
 
+const rowOf = (id: string) => document.querySelector(`.item[data-id="${CSS.escape(id)}"]`);
+
+/** Once the list has drawn, so the row's button is there to take focus. */
+const focusRow = (id: string) =>
+  requestAnimationFrame(() => rowOf(id)?.querySelector<HTMLElement>(".item-open")?.focus());
+
 /** What letting a post through did, in the words its bar in the feed uses. */
 function Settled(props: {
   post: CheckedPost;
@@ -584,9 +576,7 @@ function Settled(props: {
           </button>
         </span>
         <span id={messageId} className="item-text">
-          {props.action === "trust"
-            ? `Posts from ${name} will always show`
-            : "This post won't be hidden again"}
+          {letThroughNote(props.action, name)}
         </span>
       </span>
     </div>

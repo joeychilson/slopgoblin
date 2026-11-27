@@ -1,3 +1,6 @@
+// For programs that import this outside Chrome, like the eval and the website.
+/// <reference types="chrome" />
+
 /**
  * What Slop Goblin keeps in `chrome.storage`, besides the settings (`settings.ts`) and the
  * checked list (`checked.ts`). Nothing is kept anywhere else, apart from the service worker's

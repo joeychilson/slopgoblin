@@ -1,6 +1,13 @@
-import { hiddenAmong } from "@slopgoblin/extension/core/checked.ts";
-import { judge, type Verdict } from "@slopgoblin/extension/core/policy.ts";
-import { DEFAULT_SETTINGS, type Settings } from "@slopgoblin/extension/core/settings.ts";
+import {
+  letThroughFromPanel,
+  step,
+  viewFor,
+  type BarAction,
+  type PostState,
+  type View,
+} from "@slopgoblin/extension/content/view.ts";
+import { hiddenAmong, type CheckedPost } from "@slopgoblin/extension/core/checked.ts";
+import { DEFAULT_SETTINGS, trusting, type Settings } from "@slopgoblin/extension/core/settings.ts";
 import type { Host } from "@slopgoblin/extension/sidepanel/host.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -11,32 +18,29 @@ const READ_MS = 260;
 /** How long it waits before the first, so it has climbed up by then. */
 const START_MS = 900;
 
-export type BarAction = "reveal" | "hide" | "not-slop" | "trust" | "undo";
-type LetThrough = "not-slop" | "trust";
+/** A post the goblin hasn't read yet shows as it is. */
+const UNREAD: View = { mode: "shown" };
 
-/**
- * How a post shows in the feed, as `View` in the extension's `content/bar.ts`. Every state but
- * `shown` keeps a verdict, so a bar has its words while it folds away.
- */
-export type PostView =
-  | { mode: "shown"; verdict?: Verdict }
-  | { mode: "collapsed"; verdict: Verdict }
-  | { mode: "revealed"; verdict: Verdict; peek: boolean }
-  | { mode: "confirmed"; verdict: Verdict; action: LetThrough };
+/** What the reader has done to a post in the feed. */
+type Done = Pick<PostState, "revealed" | "letThrough">;
 
-/** The widest the goblin would ever judge a post, for its words while its bar folds away. */
-const STRICTEST: Settings = { ...DEFAULT_SETTINGS, strictness: "strict" };
+/** A post as the extension's feed keeps it. */
+const stateOf = (post: CheckedPost, done: Done | undefined): PostState => ({
+  post: { id: post.id, author: { name: post.name, handle: post.handle } },
+  revealed: done?.revealed ?? false,
+  letThrough: done?.letThrough,
+});
 
 /**
  * The extension at work on the demo feed: the posts the goblin has read, the reader's settings and
- * what they let through. The feed and the side panel share it, so either one changes both.
+ * what they let through. The feed and the side panel share it, so either one changes both, by the
+ * same rules as in X.
  */
 export function useDemo() {
   const [read, setRead] = useState(0);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [notSlop, setNotSlop] = useState<ReadonlySet<string>>(new Set());
-  const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
-  const [confirmed, setConfirmed] = useState<ReadonlyMap<string, LetThrough>>(new Map());
+  const [done, setDone] = useState<ReadonlyMap<string, Done>>(new Map());
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const started = useRef(false);
 
@@ -63,10 +67,15 @@ export function useDemo() {
     [read, notSlop],
   );
   const hidden = useMemo(() => hiddenAmong(checked, settings), [checked, settings]);
-  const verdicts = useMemo(
-    () => new Map(hidden.map(({ post, verdict }) => [post.id, verdict])),
-    [hidden],
-  );
+  const views = useMemo(() => {
+    const verdicts = new Map(hidden.map(({ post, verdict }) => [post.id, verdict]));
+    return new Map(
+      checked.map((post) => [
+        post.id,
+        viewFor(stateOf(post, done.get(post.id)), verdicts.get(post.id) ?? null, settings),
+      ]),
+    );
+  }, [checked, hidden, done, settings]);
 
   const update = useCallback(
     (patch: (s: Settings) => Partial<Settings>) => setSettings((s) => ({ ...s, ...patch(s) })),
@@ -80,70 +89,39 @@ export function useDemo() {
       return next;
     });
   }, []);
-  const reveal = useCallback((id: string, on: boolean) => {
-    setRevealed((set) => {
-      const next = new Set(set);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }, []);
 
   const host = useMemo<Host>(
     () => ({
       updateSettings: update,
-      setNotSlop: markNotSlop,
-      showInFeed: (post) => {
-        reveal(post.id, true);
-        document.getElementById("feed")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      setNotSlop: (id, on) => {
+        const isHidden = hidden.some(({ post }) => post.id === id);
+        markNotSlop(id, on);
+        setDone((all) => {
+          const was = all.get(id);
+          const letThrough = letThroughFromPanel(was?.letThrough, on, isHidden);
+          return new Map(all).set(id, { revealed: was?.revealed ?? false, letThrough });
+        });
       },
-      // The demo's tab always has the goblin running in it.
-      reloadTab: () => {},
-      openX: () => window.open("https://x.com/home"),
+      showInFeed: (post) => {
+        setDone((all) => {
+          const { revealed, letThrough } = step(stateOf(post, all.get(post.id)), "reveal");
+          return new Map(all).set(post.id, { revealed, letThrough });
+        });
+        document
+          .getElementById(`post-${post.id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      },
     }),
-    [update, markNotSlop, reveal],
+    [update, markNotSlop, hidden],
   );
 
-  const viewOf = (post: DemoPost, i: number): PostView => {
-    if (i >= read) return { mode: "shown" };
-    const verdict = verdicts.get(post.id);
-    const words = verdict ?? judge({ ...post, notSlop: false }, STRICTEST) ?? undefined;
-    const action = confirmed.get(post.id);
-    if (action && words) return { mode: "confirmed", verdict: words, action };
-    if (!verdict) return { mode: "shown", verdict: words };
-    if (settings.peek) return { mode: "revealed", verdict, peek: true };
-    if (revealed.has(post.id)) return { mode: "revealed", verdict, peek: false };
-    return { mode: "collapsed", verdict };
-  };
-
   const act = (post: DemoPost, action: BarAction) => {
-    const handle = post.handle.toLowerCase();
-    switch (action) {
-      case "reveal":
-      case "hide":
-        reveal(post.id, action === "reveal");
-        return;
-      case "not-slop":
-        markNotSlop(post.id, true);
-        setConfirmed((c) => new Map(c).set(post.id, action));
-        return;
-      case "trust":
-        update((s) => ({ trusted: [...new Set([...s.trusted, handle])] }));
-        setConfirmed((c) => new Map(c).set(post.id, action));
-        return;
-      case "undo":
-        if (confirmed.get(post.id) === "trust") {
-          update((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }));
-        } else {
-          markNotSlop(post.id, false);
-        }
-        setConfirmed((c) => {
-          const next = new Map(c);
-          next.delete(post.id);
-          return next;
-        });
-        reveal(post.id, false);
-    }
+    const next = step(stateOf(post, done.get(post.id)), action);
+    setDone((all) =>
+      new Map(all).set(post.id, { revealed: next.revealed, letThrough: next.letThrough }),
+    );
+    if (next.trust !== undefined) update(trusting(post.handle, next.trust));
+    if (next.notSlop !== undefined) markNotSlop(post.id, next.notSlop);
   };
 
   return {
@@ -153,7 +131,7 @@ export function useDemo() {
     host,
     /** Posts the goblin hasn't got to yet. */
     pending: posts.length - read,
-    viewOf,
+    viewOf: (post: DemoPost) => views.get(post.id) ?? UNREAD,
     act,
     start,
   };

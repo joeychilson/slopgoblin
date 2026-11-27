@@ -1,8 +1,8 @@
+import type { ReactNode } from "react";
 import type { CheckedPost, HiddenPost } from "../core/checked.ts";
 import type { Settings } from "../core/settings.ts";
 import { ICONS, Icon, Switch } from "./controls.tsx";
 import { HiddenList } from "./HiddenList.tsx";
-import type { ActiveTab } from "./hooks.ts";
 import { useHost } from "./host.ts";
 import { Summary } from "./Summary.tsx";
 
@@ -36,12 +36,15 @@ export function Home(props: {
   settings: Settings;
   checked: CheckedPost[];
   hidden: HiddenPost[];
-  tab: ActiveTab | null;
+  /** The active tab's posts still on the way. */
+  pending: number;
+  /** Said in place of the counts while the active tab needs something first. */
+  message?: ReactNode;
 }) {
-  const { settings, checked, hidden, tab } = props;
+  const { settings, checked, hidden, pending, message } = props;
   return (
     <>
-      <Summary tab={tab} settings={settings} checked={checked} />
+      <Summary settings={settings} checked={checked} pending={pending} message={message} />
       {settings.enabled && <HiddenList hidden={hidden} peek={settings.peek} />}
     </>
   );

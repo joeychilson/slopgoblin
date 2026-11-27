@@ -1,41 +1,45 @@
+import type { BarAction, View } from "@slopgoblin/extension/content/view.ts";
 import { GOBLIN_GLYPH } from "@slopgoblin/extension/core/glyphs.ts";
-import { reason, type Verdict } from "@slopgoblin/extension/core/policy.ts";
+import { letThroughNote, reason, type Verdict } from "@slopgoblin/extension/core/policy.ts";
 import { displayName } from "@slopgoblin/extension/core/post.ts";
-import type { ReactNode } from "react";
+import { useState } from "react";
 
 import { Fold } from "@/components/fold";
-import type { BarAction, PostView } from "@/hooks/use-demo";
 import type { DemoPost } from "@/lib/demo";
 
 /**
- * One post in the demo feed. Junk folds into the bar the extension leaves in its place, in the same
- * words; Show opens it with a line above it.
+ * One post in the demo feed, drawn from the same view as its bar in X. Junk folds into the bar,
+ * in the same words; Show opens it with a line above it.
  */
 export function FeedPost(props: {
   post: DemoPost;
-  view: PostView;
+  view: View;
   onAction: (action: BarAction) => void;
 }) {
   const { post, view, onAction } = props;
   const name = displayName(post);
+  // A bar or a line folding away keeps its words until it's gone.
+  const [last, setLast] = useState(view);
+  if (view.mode !== "shown" && view !== last) setLast(view);
+  const drawn = view.mode === "shown" ? last : view;
   return (
     <li id={`post-${post.id}`} className="feed-post">
       <Fold open={view.mode === "collapsed"}>
-        {view.verdict && (
+        {"verdict" in drawn && (
           <button type="button" className="bar" onClick={() => onAction("reveal")}>
             <span className="bar-slot">
               <span className="bar-ghost" data-face={post.face} />
             </span>
             <span className="bar-what">
-              <Why verdict={view.verdict} /> from {name}
+              <Why verdict={drawn.verdict} /> from {name}
             </span>
             <span className="bar-show">Show</span>
           </button>
         )}
       </Fold>
-      <Fold open={view.mode !== "collapsed"}>
+      <Fold open={view.mode !== "collapsed" && view.mode !== "removed"}>
         <Fold open={view.mode === "revealed" || view.mode === "confirmed"}>
-          {view.verdict && <Context name={name} view={view} onAction={onAction} />}
+          <Context name={name} view={drawn} onAction={onAction} />
         </Fold>
         <Body post={post} name={name} />
       </Fold>
@@ -59,44 +63,40 @@ function Why({ verdict }: { verdict: Verdict }) {
  * The line above a post that's showing anyway: a small goblin lined up with the avatar, the words,
  * then what can be done about it.
  */
-function Context(props: { name: string; view: PostView; onAction: (action: BarAction) => void }) {
+function Context(props: { name: string; view: View; onAction: (action: BarAction) => void }) {
   const { name, view, onAction } = props;
-  if (!view.verdict) return null;
-  let words: ReactNode;
-  let actions: ReactNode;
-  if (view.mode === "confirmed") {
-    words =
-      view.action === "trust"
-        ? `Posts from ${name} will always show`
-        : "This post won’t be hidden again";
-    actions = <Action label="Undo" primary onClick={() => onAction("undo")} />;
-  } else {
-    const { midSentence } = reason(view.verdict);
-    words = <Why verdict={view.verdict} />;
-    actions = (
-      <>
-        {/* There's no arguing with X's own label. */}
-        {!view.verdict.labeled && (
-          <>
-            <Action label={`Not ${midSentence}`} onClick={() => onAction("not-slop")} />
-            <Action label={`Always show ${name}`} onClick={() => onAction("trust")} />
-          </>
-        )}
-        {view.mode === "revealed" && !view.peek && (
-          <Action label="Hide" primary onClick={() => onAction("hide")} />
-        )}
-      </>
-    );
-  }
+  if (view.mode === "shown" || view.mode === "removed") return null;
   return (
     <div className="context">
       <span className="context-what">
         <svg className="context-goblin" viewBox={GOBLIN_GLYPH.viewBox} aria-hidden="true">
           <path d={GOBLIN_GLYPH.d} fillRule="evenodd" />
         </svg>
-        {words}
+        {view.mode === "confirmed" ? (
+          letThroughNote(view.action, name)
+        ) : (
+          <Why verdict={view.verdict} />
+        )}
       </span>
-      {actions}
+      {view.mode === "confirmed" ? (
+        <Action label="Undo" primary onClick={() => onAction("undo")} />
+      ) : (
+        <>
+          {/* There's no arguing with X's own label. */}
+          {!view.verdict.labeled && (
+            <>
+              <Action
+                label={`Not ${reason(view.verdict).midSentence}`}
+                onClick={() => onAction("not-slop")}
+              />
+              <Action label={`Always show ${name}`} onClick={() => onAction("trust")} />
+            </>
+          )}
+          {view.mode === "revealed" && !view.peek && (
+            <Action label="Hide" primary onClick={() => onAction("hide")} />
+          )}
+        </>
+      )}
     </div>
   );
 }

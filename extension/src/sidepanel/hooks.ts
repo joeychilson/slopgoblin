@@ -151,7 +151,7 @@ export function useActiveTab() {
 }
 
 /** Resolves to undefined when Slop Goblin isn't running in the tab. */
-export function sendToTab<T>(tabId: number, message: TabMessage): Promise<T | undefined> {
+function sendToTab<T>(tabId: number, message: TabMessage): Promise<T | undefined> {
   return chrome.tabs.sendMessage<TabMessage, T>(tabId, message).catch(() => undefined);
 }
 
@@ -184,8 +184,6 @@ export function useChromeHost(tab: ActiveTab | null | undefined): Host {
           tabId !== undefined && (await sendToTab<boolean>(tabId, { type: "reveal", id: post.id }));
         if (!found) await chrome.tabs.create({ url: post.url });
       },
-      reloadTab: (id) => void chrome.tabs.reload(id),
-      openX: () => void chrome.tabs.create({ url: "https://x.com/home" }),
       peekShortcut,
     }),
     [tabId, peekShortcut],

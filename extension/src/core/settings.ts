@@ -28,6 +28,15 @@ export const DEFAULT_SETTINGS: Settings = {
   trustFollowing: true,
 };
 
+/** The change that always shows an author's posts, or stops doing so. */
+export const trusting =
+  (handle: string, on: boolean) =>
+  ({ trusted }: Settings): Partial<Settings> => {
+    // `judge` compares handles in lowercase.
+    const h = handle.toLowerCase();
+    return { trusted: on ? [...new Set([...trusted, h])] : trusted.filter((t) => t !== h) };
+  };
+
 /** Synced through the reader's Chrome profile. */
 const saved = stored<Partial<Settings>>("sync", "settings");
 

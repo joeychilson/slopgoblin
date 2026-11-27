@@ -2,7 +2,7 @@ import { site } from "@/lib/site";
 
 const links = [
   { label: "Source", href: site.repo },
-  { label: "Privacy policy", href: `${site.repo}/blob/main/PRIVACY.md` },
+  { label: "Privacy policy", href: site.privacy },
   { label: "License", href: `${site.repo}/blob/main/LICENSE` },
 ];
 

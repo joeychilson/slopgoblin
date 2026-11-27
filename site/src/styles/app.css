@@ -25,6 +25,8 @@
 html {
   background: var(--ground);
   scrollbar-gutter: stable;
+  /* Clear of the sticky masthead. */
+  scroll-padding-top: 64px;
 }
 
 body {
@@ -299,6 +301,18 @@ main {
   margin-top: 84px;
 }
 
+/* Fades out the feed's bottom edge, which stays put while the feed scrolls under it. */
+.feed-edge::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: auto 0 0;
+  height: 80px;
+  border-radius: 0 0 28px 28px;
+  background: linear-gradient(to top, var(--feed), transparent);
+  pointer-events: none;
+}
+
 .feed-goblin {
   position: absolute;
   inset: 0;
@@ -310,22 +324,16 @@ main {
   --focus: var(--accent);
   position: relative;
   z-index: 1;
+  box-sizing: border-box;
   height: 470px;
-  overflow: clip;
+  /* Room to scroll the last post up out of the fade. */
+  padding-bottom: 56px;
+  overflow-y: auto;
   overflow-anchor: none;
+  scrollbar-width: none;
   border-radius: 28px;
   background: var(--feed);
   color: var(--ink);
-}
-
-/* Fades out whatever doesn't fit, so the feed keeps one height as posts fold and open. */
-.feed::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  height: 80px;
-  background: linear-gradient(to top, var(--feed), transparent);
-  pointer-events: none;
 }
 
 .feed-post {
@@ -563,7 +571,7 @@ main {
 }
 
 /* The extension's side panel at its own size. It fades out at the bottom like the feed, into a
-   sheet of the same cream. */
+   sheet of the same cream, and its page scrolls under the fade. */
 .live-panel {
   position: relative;
   justify-self: center;
@@ -574,6 +582,15 @@ main {
   isolation: isolate;
   border-radius: 24px;
   box-shadow: 0 0 0 1px var(--line);
+}
+
+.live-panel-page {
+  box-sizing: border-box;
+  height: 100%;
+  /* Room to scroll the last row up out of the fade. */
+  padding-bottom: 64px;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
 
 /* Over the den's sheet and the goblin's hands. */

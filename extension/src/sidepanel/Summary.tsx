@@ -3,15 +3,17 @@ import { hiddenAtEach, type CheckedPost } from "../core/checked.ts";
 import type { Settings } from "../core/settings.ts";
 import { STRICTNESS, TRADEOFF, type Strictness } from "../core/taxonomy.ts";
 import { Segments } from "./controls.tsx";
-import type { ActiveTab } from "./hooks.ts";
 import { useHost } from "./host.ts";
 
 export function Summary(props: {
-  tab: ActiveTab | null;
   settings: Settings;
   checked: CheckedPost[];
+  /** The active tab's posts still on the way. */
+  pending: number;
+  /** Said in place of the counts while the active tab needs something first. */
+  message?: ReactNode;
 }) {
-  const { tab, settings, checked } = props;
+  const { settings, checked, pending, message } = props;
   const host = useHost();
   const counts = useMemo(
     () => (settings.enabled && checked.length ? hiddenAtEach(checked, settings) : undefined),
@@ -29,28 +31,14 @@ export function Summary(props: {
     );
   }
 
-  const onX = Boolean(tab?.url?.startsWith("https://x.com/"));
-  // Tabs opened before the extension was installed don't have the content script yet.
-  const reloadId = onX && tab && !tab.state && !tab.loading ? tab.id : undefined;
-
   return (
     <section className="summary" aria-label="Summary">
-      {reloadId !== undefined ? (
-        <Message
-          title="Reload to start"
-          action={<Button onClick={() => host.reloadTab(reloadId)}>Reload tab</Button>}
-        >
-          This tab was open before Slop Goblin was.
-        </Message>
-      ) : checked.length ? (
-        <Caption checked={checked.length} pending={tab?.state?.pending ?? 0} />
-      ) : onX ? (
-        <Message title="Nothing checked yet">Posts get checked as you scroll.</Message>
-      ) : (
-        <Message title="Not on X" action={<Button onClick={host.openX}>Open x.com</Button>}>
-          Open X and the goblin starts checking posts.
-        </Message>
-      )}
+      {message ??
+        (checked.length ? (
+          <Caption checked={checked.length} pending={pending} />
+        ) : (
+          <Message title="Nothing checked yet">Posts get checked as you scroll.</Message>
+        ))}
       <Segments<Strictness>
         name="strictness"
         label="Strictness"
@@ -81,7 +69,7 @@ function Caption(props: { checked: number; pending: number }) {
   );
 }
 
-function Message(props: { title: string; children?: ReactNode; action?: ReactNode }) {
+export function Message(props: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="message">
       <h2>{props.title}</h2>
@@ -91,7 +79,7 @@ function Message(props: { title: string; children?: ReactNode; action?: ReactNod
   );
 }
 
-function Button(props: { onClick: () => void; children: ReactNode }) {
+export function Button(props: { onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" className="button primary" onClick={props.onClick}>
       {props.children}

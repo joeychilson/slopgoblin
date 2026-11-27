@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { HiddenPost } from "../core/checked.ts";
 import { USD_PER_MILLION_TOKENS } from "../core/decisions.ts";
 import { GOBLIN_GLYPH } from "../core/glyphs.ts";
-import type { Settings as SettingsData } from "../core/settings.ts";
+import { trusting, type Settings as SettingsData } from "../core/settings.ts";
 import { store, type Usage } from "../core/storage.ts";
 import { CATEGORIES } from "../core/taxonomy.ts";
 import { ICONS, Icon, Segments, Switch } from "./controls.tsx";
@@ -115,9 +115,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
                 <button
                   type="button"
                   aria-label={`Stop always showing @${handle}`}
-                  onClick={() =>
-                    host.updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handle) }))
-                  }
+                  onClick={() => host.updateSettings(trusting(handle, false))}
                 >
                   <Icon d={ICONS.close} size={14} weight={2.2} />
                 </button>

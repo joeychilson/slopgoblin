@@ -6,6 +6,7 @@ import { ICONS, Icon } from "./controls.tsx";
 import { Den } from "./Den.tsx";
 import { Home, HomeTop } from "./Home.tsx";
 import {
+  type ActiveTab,
   useActiveTab,
   useApiKey,
   useChecked,
@@ -19,6 +20,7 @@ import { HostContext } from "./host.ts";
 import { Lurker } from "./Lurker.tsx";
 import { Settings } from "./Settings.tsx";
 import { Setup } from "./Setup.tsx";
+import { Button, Message } from "./Summary.tsx";
 
 export function App() {
   const settings = useSettings();
@@ -87,7 +89,13 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
             tab !== undefined && (
               <>
                 <Notice status={status} broken={tab?.state?.broken} enabled={settings.enabled} />
-                <Home settings={settings} checked={checked} hidden={hidden} tab={tab} />
+                <Home
+                  settings={settings}
+                  checked={checked}
+                  hidden={hidden}
+                  pending={tab?.state?.pending ?? 0}
+                  message={tabMessage(tab, checked.length)}
+                />
               </>
             )
           )}
@@ -95,6 +103,37 @@ function Main({ settings, apiKey }: { settings: SettingsData; apiKey: string }) 
       </Den>
     </HostContext>
   );
+}
+
+/** What the summary says in place of the counts when the active tab can't have posts checked yet. */
+function tabMessage(tab: ActiveTab | null, checked: number) {
+  const onX = Boolean(tab?.url?.startsWith("https://x.com/"));
+  // Tabs opened before the extension was installed don't have the content script yet.
+  if (onX && tab && !tab.state && !tab.loading) {
+    const { id } = tab;
+    return (
+      <Message
+        title="Reload to start"
+        action={<Button onClick={() => void chrome.tabs.reload(id)}>Reload tab</Button>}
+      >
+        This tab was open before Slop Goblin was.
+      </Message>
+    );
+  }
+  if (!onX && !checked) {
+    return (
+      <Message
+        title="Not on X"
+        action={
+          <Button onClick={() => void chrome.tabs.create({ url: "https://x.com/home" })}>
+            Open x.com
+          </Button>
+        }
+      >
+        Open X and the goblin starts checking posts.
+      </Message>
+    );
+  }
 }
 
 interface NoticeContent {

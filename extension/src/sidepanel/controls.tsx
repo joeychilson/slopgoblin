@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { EYE_OFF } from "../core/glyphs.ts";
 
+declare module "react" {
+  // The panel's styles take per-element values, like a row's place in a stagger, as custom
+  // properties. Declared here, where every part of the panel imports from, so a page that
+  // draws the panel, like the website, checks them too.
+  interface CSSProperties {
+    [property: `--${string}`]: string | number;
+  }
+}
+
 export function Switch(props: {
   checked: boolean;
   label: string;

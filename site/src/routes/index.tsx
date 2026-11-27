@@ -82,7 +82,7 @@ function Home() {
                 Posts you scroll past go to Google to be judged, with your key, and nowhere else.
                 Your own posts, ads and people you follow aren’t sent. With a free key, Google may
                 use what it receives to improve its products.{" "}
-                <TextLink href={`${site.repo}/blob/main/PRIVACY.md`}>Privacy policy</TextLink>
+                <TextLink href={site.privacy}>Privacy policy</TextLink>
               </dd>
             </div>
             <div>

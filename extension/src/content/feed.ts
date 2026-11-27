@@ -7,11 +7,12 @@ import type {
   TabMessage,
   TabState,
 } from "../core/messages.ts";
-import { judge, needsScores, type Judged, type Verdict } from "../core/policy.ts";
+import { judge, needsScores, type Judged } from "../core/policy.ts";
 import { isReply, type Label, type Post, type ReaderNote } from "../core/post.ts";
-import { updateSettings, watchSettings, type Settings } from "../core/settings.ts";
+import { trusting, updateSettings, watchSettings, type Settings } from "../core/settings.ts";
 import type { SiteAdapter, SiteData } from "../sites/site.ts";
-import { renderCell, type BarAction, type View } from "./bar.ts";
+import { renderCell } from "./bar.ts";
+import { letThroughFromPanel, step, viewFor, type BarAction, type PostState } from "./view.ts";
 
 const RETRY_MS = 20_000;
 /** Short settle skips rapid scroll-bys without delaying text posts. */
@@ -25,16 +26,13 @@ const ID_ATTR = "data-sg-post";
 /** Evict unmounted posts past this count so multi-day tabs stay bounded. */
 const KEEP = 2000;
 
-interface Tracked {
+interface Tracked extends PostState {
   post: Post;
   status: "idle" | "pending" | "done" | "failed";
   queued?: boolean;
   scores: Scores;
   notSlop: boolean;
-  revealed: boolean;
-  letThrough?: "not-slop" | "trust";
   checkedAt?: number;
-  avatar?: string;
 }
 
 export function startFeed(site: SiteAdapter, initialSettings: Settings) {
@@ -421,34 +419,19 @@ class Feed {
   };
 
   private act(t: Tracked, action: BarAction) {
-    switch (action) {
-      case "reveal":
-      case "hide":
-        t.revealed = action === "reveal";
-        this.render(t, true);
-        break;
-      case "not-slop":
-        t.letThrough = "not-slop";
-        t.notSlop = true;
-        this.render(t, true);
-        void this.send({ type: "not-slop", id: t.post.id, notSlop: true });
-        break;
-      case "trust":
-        t.letThrough = "trust";
-        void updateSettings((s) => ({ trusted: [...new Set([...s.trusted, handleOf(t)])] }));
-        break;
-      case "undo":
-        t.revealed = true;
-        if (t.letThrough === "trust") {
-          void updateSettings((s) => ({ trusted: s.trusted.filter((h) => h !== handleOf(t)) }));
-        } else {
-          t.notSlop = false;
-          this.render(t, true);
-          void this.send({ type: "not-slop", id: t.post.id, notSlop: false });
-        }
-        t.letThrough = undefined;
-        break;
+    const next = step(t, action);
+    t.revealed = next.revealed;
+    t.letThrough = next.letThrough;
+    // A settings change shows every post again, this one included.
+    if (next.trust !== undefined) {
+      void updateSettings(trusting(t.post.author.handle, next.trust));
+      return;
     }
+    if (next.notSlop !== undefined) {
+      t.notSlop = next.notSlop;
+      void this.send({ type: "not-slop", id: t.post.id, notSlop: next.notSlop });
+    }
+    this.render(t, true);
   }
 
   private readonly onTabMessage = (
@@ -479,8 +462,7 @@ class Feed {
       case "not-slop": {
         const t = this.posts.get(message.id);
         if (!t || t.notSlop === message.notSlop) break;
-        if (message.notSlop && this.verdict(t)) t.letThrough = "not-slop";
-        if (!message.notSlop && t.letThrough === "not-slop") t.letThrough = undefined;
+        t.letThrough = letThroughFromPanel(t.letThrough, message.notSlop, Boolean(this.verdict(t)));
         t.notSlop = message.notSlop;
         this.render(t, false);
         break;
@@ -589,22 +571,4 @@ function mergePost(prev: Post, next: Post): Post {
 function priorityOf(el: Element): Priority {
   const rect = el.getBoundingClientRect();
   return rect.bottom > 0 && rect.top < innerHeight ? 0 : 1;
-}
-
-function viewFor(t: Tracked, verdict: Verdict | null, settings: Settings): View {
-  const { post, letThrough } = t;
-  if (verdict) {
-    const base = {
-      id: post.id,
-      author: post.author,
-      avatar: t.avatar,
-      verdict,
-      peek: settings.peek && !t.revealed,
-    };
-    if (settings.peek || t.revealed) return { ...base, mode: "revealed" };
-    return settings.hideMode === "remove" ? { mode: "removed" } : { ...base, mode: "collapsed" };
-  }
-  return settings.enabled && letThrough
-    ? { mode: "confirmed", id: post.id, author: post.author, action: letThrough }
-    : { mode: "shown" };
 }

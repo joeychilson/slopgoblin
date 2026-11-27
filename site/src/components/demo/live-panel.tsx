@@ -6,28 +6,25 @@ import { Lurker } from "@slopgoblin/extension/sidepanel/Lurker.tsx";
 import type { Demo } from "@/hooks/use-demo";
 
 /**
- * The extension's own side panel, run on the demo feed. Its tab is x.com, with the posts the goblin
- * hasn't read yet on the way.
+ * The extension's own side panel, run on the demo feed. It scrolls inside its box, as it does in
+ * Chrome.
  */
 export function LivePanel({ demo }: { demo: Demo }) {
   const { settings, checked, hidden, pending } = demo;
   return (
     <div className="live-panel">
-      <HostContext value={demo.host}>
-        <Den
-          header={<HomeTop enabled={settings.enabled} />}
-          goblin={<Lurker awake={settings.enabled} fed={hidden.length} />}
-        >
-          <div className="sheet-body">
-            <Home
-              settings={settings}
-              checked={checked}
-              hidden={hidden}
-              tab={{ id: 0, url: "https://x.com/home", state: { pending, broken: false } }}
-            />
-          </div>
-        </Den>
-      </HostContext>
+      <div className="live-panel-page">
+        <HostContext value={demo.host}>
+          <Den
+            header={<HomeTop enabled={settings.enabled} />}
+            goblin={<Lurker awake={settings.enabled} fed={hidden.length} />}
+          >
+            <div className="sheet-body">
+              <Home settings={settings} checked={checked} hidden={hidden} pending={pending} />
+            </div>
+          </Den>
+        </HostContext>
+      </div>
     </div>
   );
 }

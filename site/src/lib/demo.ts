@@ -130,7 +130,7 @@ const seeds: Seed[] = [
   },
 ];
 
-/** Newest first, as the side panel lists them. Each links to its place in the feed. */
+/** Newest first, as the side panel lists them. */
 export const posts: DemoPost[] = seeds.map((seed, i) => ({
   labels: [],
   ...seed,

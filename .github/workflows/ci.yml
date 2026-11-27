@@ -30,6 +30,8 @@ jobs:
           cache: true
       - run: vp check
       - run: vp test
+      # The site's prerender only runs in a build, which would otherwise wait for the deploy.
+      - run: vp -C site build
       # The end-to-end tests build the extension and load it into Chromium. The runner has the
       # libraries Chromium needs already, with its own Chrome.
       - run: vp -C extension exec playwright install --no-shell chromium

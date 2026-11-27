@@ -195,11 +195,12 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     // Keyboard focus on the row moves on to the next one rather than falling off the page.
     if (row?.contains(document.activeElement)) {
       const next = row.nextElementSibling ?? row.previousElementSibling;
+      // Without scrolling: the reader may have moved on from the list.
       (
         next?.querySelector<HTMLElement>(".item-open, .item-undo") ??
         title.current ??
         document.querySelector<HTMLElement>(".peek")
-      )?.focus();
+      )?.focus({ preventScroll: true });
     }
     setSettling((prev) => {
       const settled = prev.get(id);

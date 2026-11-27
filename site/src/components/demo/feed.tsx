@@ -19,19 +19,20 @@ export function FeedPost(props: {
   const { post, view, onAction } = props;
   const name = displayName(post);
   // A bar or a line folding away keeps its words until it's gone.
-  const [last, setLast] = useState(view);
-  if (view.mode !== "shown" && view !== last) setLast(view);
-  const drawn = view.mode === "shown" ? last : view;
+  const [bar, setBar] = useState(view);
+  const [line, setLine] = useState(view);
+  if (view.mode === "collapsed" && view !== bar) setBar(view);
+  if ((view.mode === "revealed" || view.mode === "confirmed") && view !== line) setLine(view);
   return (
     <li id={`post-${post.id}`} className="feed-post">
       <Fold open={view.mode === "collapsed"}>
-        {"verdict" in drawn && (
+        {bar.mode === "collapsed" && (
           <button type="button" className="bar" onClick={() => onAction("reveal")}>
             <span className="bar-slot">
               <span className="bar-ghost" data-face={post.face} />
             </span>
             <span className="bar-what">
-              <Why verdict={drawn.verdict} /> from {name}
+              <Why verdict={bar.verdict} /> from {name}
             </span>
             <span className="bar-show">Show</span>
           </button>
@@ -39,7 +40,7 @@ export function FeedPost(props: {
       </Fold>
       <Fold open={view.mode !== "collapsed" && view.mode !== "removed"}>
         <Fold open={view.mode === "revealed" || view.mode === "confirmed"}>
-          <Context name={name} view={drawn} onAction={onAction} />
+          <Context name={name} view={line} onAction={onAction} />
         </Fold>
         <Body post={post} name={name} />
       </Fold>
@@ -65,7 +66,7 @@ function Why({ verdict }: { verdict: Verdict }) {
  */
 function Context(props: { name: string; view: View; onAction: (action: BarAction) => void }) {
   const { name, view, onAction } = props;
-  if (view.mode === "shown" || view.mode === "removed") return null;
+  if (view.mode !== "revealed" && view.mode !== "confirmed") return null;
   return (
     <div className="context">
       <span className="context-what">

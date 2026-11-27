@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+- **The side panel is rebuilt on React**, the same as slopgoblin.app. It looks and works the same.
+- **The side panel stays where you scrolled it** when a post you let through folds away.
+- **No posts are checked again** after updating: nothing sent to Google changed.
+
 ## 0.3.1
 
 - **Fewer real headlines hidden.** A post is now hidden only when one kind of junk stands out, at

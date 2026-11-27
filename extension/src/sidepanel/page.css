@@ -1,0 +1,9 @@
+/* The side panel's own page, which the den fills. */
+body {
+  margin: 0;
+  background: var(--ground);
+}
+
+.sheet {
+  min-height: calc(100vh - 100px);
+}

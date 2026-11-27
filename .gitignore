@@ -3,5 +3,9 @@ dist
 *.local
 .env*
 .DS_Store
-eval/.cache.json
-eval/real
+extension/eval/.cache.json
+extension/eval/real
+site/.cloudflare
+site/.wrangler
+site/.tanstack
+site/.dev.vars*

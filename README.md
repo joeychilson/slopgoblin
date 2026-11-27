@@ -55,17 +55,22 @@ anywhere else. There's no server, account or telemetry.
 
 ## Development
 
+The extension is in `extension/`, and its website, slopgoblin.app, is in
+`site/`.
+
 ```sh
 pnpm install
-vp build       # into dist/, for Load unpacked
-vp run dev     # rebuild on change
-vp check       # format, lint and type check
+vp -C extension build     # into extension/dist/, for Load unpacked
+vp -C extension run dev   # rebuild on change
+vp -C site dev            # the website
+vp check                  # format, lint and type check
 vp test
-vp run e2e     # the extension in Chromium, on a mock X page
+vp run e2e                # the extension in Chromium, on a mock X page
 ```
 
 [docs/development.md](docs/development.md) has how it works, how the filter
-is tuned and measured, how to add a site, and how to release.
+is tuned and measured, how to add a site, how the website is built, and how
+to release.
 
 ## Report a problem
 

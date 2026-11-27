@@ -1,0 +1,1335 @@
+/*
+ * The goblin's den: a green ground with one paper sheet on it, and the goblin hanging on to the
+ * sheet's top edge. Everything sits on the sheet; nothing is boxed in a card of its own. What's
+ * chosen is filled with the ground's green.
+ *
+ * Text starts 20px in from the panel's edge everywhere. Spacing is on a 4px grid. Corners grow
+ * with size: rows 16, the sheet 28, pills all the way. Bricolage is for the name and headings;
+ * everything else is the system font, 13 and 12px.
+ *
+ * Motion has two speeds: `--spring` overshoots a little, for things that move to a new place
+ * (the chosen pill, switch knobs); `--glide` settles, for things arriving, leaving or opening.
+ *
+ * Colors and motion are tokens in tokens.css. Everything in the den is scoped to `.den`, so the
+ * website can show it on a page of its own; the goblin's `lurker-` classes aren't, so it can
+ * peek over the website's feed too.
+ */
+
+@scope (.den) {
+  * {
+    box-sizing: border-box;
+  }
+
+  /* The den itself, the ground everything else sits on. */
+  :scope {
+    min-width: 280px;
+    background: var(--ground);
+    color: var(--ink);
+    font: 13px/18px var(--body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input {
+    font: inherit;
+    color: inherit;
+  }
+
+  a {
+    color: var(--accent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  h1,
+  h2,
+  p,
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  code {
+    font-size: 12px;
+  }
+
+  /* The ground: header */
+
+  .top {
+    height: 56px;
+    color: var(--on-ground);
+  }
+
+  .top-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+    padding: 0 12px 0 20px;
+    animation: fade 220ms var(--glide);
+  }
+
+  .wordmark {
+    flex: 1;
+    font: 800 20px/1 var(--display);
+    letter-spacing: -0.025em;
+  }
+
+  .top-title {
+    flex: 1;
+    margin-left: 2px;
+    font: 700 18px/1 var(--display);
+    letter-spacing: -0.02em;
+  }
+
+  .top .icon-button {
+    color: var(--on-ground);
+  }
+
+  .top .icon-button:hover {
+    background: var(--on-ground-hover);
+  }
+
+  .top .icon-button:first-child {
+    margin-left: -8px;
+  }
+
+  .top .switch {
+    margin-left: 6px;
+    background: var(--ground-track);
+  }
+
+  .top .switch[aria-checked="true"] {
+    background: var(--ground-switch);
+  }
+
+  .top :focus-visible {
+    outline-color: var(--on-ground);
+  }
+
+  /* The sheet, and the goblin on its edge */
+
+  .edge {
+    position: relative;
+    margin-top: 44px;
+  }
+
+  .sheet {
+    position: relative;
+    z-index: 1;
+    padding: 20px 16px 32px;
+    border-radius: 28px 28px 0 0;
+    background: var(--sheet);
+  }
+
+  .sheet-body {
+    --from: 0px;
+    animation: enter 300ms var(--glide) both;
+  }
+
+  .sheet-body[data-from="right"] {
+    --from: 20px;
+  }
+
+  .sheet-body[data-from="left"] {
+    --from: -20px;
+  }
+
+  /* The summary: a caption or message, then the strictness levels */
+
+  .caption {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 4px 10px;
+  }
+
+  .caption h2,
+  .list-head h2,
+  .section-title {
+    font: 700 16px/20px var(--display);
+    letter-spacing: -0.01em;
+  }
+
+  .caption span {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .message {
+    margin: 0 4px 16px;
+  }
+
+  .message h2 {
+    font: 700 22px/26px var(--display);
+    letter-spacing: -0.02em;
+  }
+
+  .message p {
+    margin-top: 4px;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+
+  .message .button {
+    margin-top: 12px;
+  }
+
+  .trade {
+    margin: 10px 4px 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+    text-wrap: pretty;
+    animation: fade 260ms var(--glide);
+  }
+
+  /* Segments: the strictness levels, and the hide mode. A slim track; the chosen one is filled,
+   and the fill springs across to the next one picked. */
+
+  .segments {
+    --gap: 3px;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+    overflow: hidden;
+    padding: var(--gap);
+    border-radius: 9999px;
+    background: var(--well);
+  }
+
+  .segments-pill {
+    position: absolute;
+    top: var(--gap);
+    bottom: var(--gap);
+    left: var(--gap);
+    width: calc((100% - 2 * var(--gap)) / var(--n));
+    border-radius: 9999px;
+    background: var(--fill);
+    transform: translateX(calc(var(--at) * 100%));
+    transition: transform 420ms var(--spring);
+  }
+
+  .segment {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 30px;
+    border-radius: 9999px;
+    color: var(--muted);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 240ms;
+  }
+
+  .segment:hover {
+    color: var(--ink);
+  }
+
+  .segment:has(:checked) {
+    color: var(--on-fill);
+  }
+
+  .segment input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: inherit;
+  }
+
+  .segment:has(:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .segment-count {
+    opacity: 0.62;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .segment-count.is-new {
+    animation: pop 420ms var(--spring);
+  }
+
+  /* Hidden posts */
+
+  .hidden {
+    margin-top: 28px;
+  }
+
+  .list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 6px 4px;
+  }
+
+  .list-head h2 {
+    min-width: 0;
+  }
+
+  .peek {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px 0 8px;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--well);
+    color: var(--ink-2);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background 220ms,
+      color 220ms,
+      transform 200ms var(--spring);
+  }
+
+  .peek:hover {
+    background: var(--well-strong);
+  }
+
+  .peek:active {
+    transform: scale(0.95);
+  }
+
+  .peek[aria-pressed="true"] {
+    background: var(--fill);
+    color: var(--on-fill);
+  }
+
+  .peek .icon {
+    transition: transform 320ms var(--spring);
+  }
+
+  .peek[aria-pressed="false"] .icon {
+    transform: scaleY(0.55);
+  }
+
+  .peek kbd {
+    opacity: 0.7;
+    font: 500 11px/1 var(--body);
+  }
+
+  /* A narrow panel keeps the title whole before the shortcut. */
+  @media (max-width: 325px) {
+    .peek kbd {
+      display: none;
+    }
+  }
+
+  /* With two or more kinds hidden, the title is what picks which to show. */
+  .list-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    letter-spacing: inherit;
+    cursor: pointer;
+  }
+
+  .list-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    animation: fade 260ms var(--glide);
+  }
+
+  .list-title .icon {
+    flex: none;
+    color: var(--muted);
+    transition:
+      color 180ms,
+      transform 320ms var(--spring);
+  }
+
+  .list-title:hover .icon {
+    color: var(--ink);
+  }
+
+  .list-title[aria-expanded="true"] .icon {
+    transform: rotate(180deg);
+  }
+
+  /* The kinds, as rows like "What to hide" in Settings. The one shown is filled, like an open
+   post, and each count ends where a post's reason does. The box that clips while they open is
+   as wide as the rows, so their rounded ends show. */
+  .kinds {
+    margin: 0 -4px;
+  }
+
+  .kinds .rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding-bottom: 8px;
+  }
+
+  .kinds .row {
+    width: 100%;
+    padding: 7px 8px;
+    border: 0;
+    background: none;
+    text-align: left;
+  }
+
+  .kinds .row-title {
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+
+  .kinds .row[aria-pressed="true"] {
+    background: var(--well);
+  }
+
+  .kinds .row-count {
+    color: var(--muted);
+  }
+
+  .kinds .row[aria-pressed="true"] .row-title {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .kinds .row:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .kinds.is-open .row {
+    animation: drop 280ms var(--glide) both;
+    animation-delay: calc(40ms + var(--i) * 25ms);
+  }
+
+  /* Rows start 12px in, so what's in them starts at 20 like everything else. */
+  .list {
+    margin: 0 -4px;
+  }
+
+  /* Each row keeps the space under it, so the space grows and folds away with the row. */
+  .item {
+    display: grid;
+    grid-template-rows: 1fr;
+    margin-bottom: 4px;
+    animation: row-in 420ms var(--glide) both;
+    animation-delay: calc(var(--order, 0) * 45ms);
+  }
+
+  .item.is-leaving {
+    animation: row-out 240ms var(--glide) forwards;
+  }
+
+  .item-inner {
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 16px;
+    transition: background 200ms;
+  }
+
+  .item:hover .item-inner {
+    background: var(--hover);
+  }
+
+  .item.is-open .item-inner {
+    background: var(--well);
+  }
+
+  .item-open,
+  .item-settled {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    column-gap: 12px;
+    width: 100%;
+    padding: 10px 8px;
+  }
+
+  .item-open {
+    border: 0;
+    border-radius: 16px;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .item-open:focus-visible {
+    outline-offset: -2px;
+  }
+
+  /* Spam accounts' faces stay out of the way until a row is pointed at or opened. */
+  .avatar {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--well);
+    color: var(--muted);
+  }
+
+  .avatar-initial {
+    font: 700 13px/1 var(--display);
+  }
+
+  .avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    filter: grayscale(1);
+    opacity: 0.5;
+    transition:
+      filter 300ms,
+      opacity 300ms;
+  }
+
+  .item:hover .avatar img,
+  .item.is-open .avatar img {
+    filter: none;
+    opacity: 1;
+  }
+
+  .item-body {
+    min-width: 0;
+  }
+
+  /* The name, and why it went over on the right. A long name gives way first. */
+  .item-line {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .item-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .item-why {
+    flex: none;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .item-why.is-quiet {
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .item-text {
+    display: -webkit-box;
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--ink-2);
+    overflow-wrap: anywhere;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .item.is-open .item-text {
+    -webkit-line-clamp: 12;
+  }
+
+  .item-text.is-empty {
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* A row just let through keeps its face and name. Undo is where the reason was, and the text
+   says what happened, until the row folds away. */
+  .item-settled .item-body {
+    animation: fade 260ms var(--glide);
+  }
+
+  .item-settled .item-text {
+    color: var(--muted);
+  }
+
+  .item-undo {
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+
+  .item-undo:hover {
+    text-decoration: underline;
+  }
+
+  /* Opens in place and pushes what's under it down: what can be done about a post, under its
+   text, and the kinds, under the title. */
+  .unfold {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 320ms var(--glide);
+  }
+
+  .unfold.is-open {
+    grid-template-rows: 1fr;
+  }
+
+  .unfold > div {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* A small tray lined up with the post's text, one row per action, which come in one after
+   another as the post opens. */
+  .tray {
+    display: flex;
+    flex-direction: column;
+    margin: 4px 8px 8px 52px;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--sheet);
+  }
+
+  .tray button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms;
+  }
+
+  .tray button:hover {
+    background: var(--well);
+  }
+
+  .tray button:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .tray .icon {
+    flex: none;
+    color: var(--accent);
+  }
+
+  .tray span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .item.is-open .tray button {
+    animation: drop 280ms var(--glide) both;
+    animation-delay: calc(90ms + var(--i) * 40ms);
+  }
+
+  /* Notices sit at the top of the sheet. */
+
+  .notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding: 12px 12px 12px 16px;
+    border-radius: 16px;
+    background: var(--well);
+    animation: fade 300ms var(--glide);
+  }
+
+  .notice.is-error {
+    background: color-mix(in srgb, var(--danger) 13%, transparent);
+  }
+
+  .notice p {
+    flex: 1;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+    overflow-wrap: anywhere;
+  }
+
+  .notice strong {
+    display: block;
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  /* Settings */
+
+  .settings section + section {
+    margin-top: 32px;
+  }
+
+  .section-title {
+    margin: 0 4px 8px;
+  }
+
+  .hint {
+    margin: 8px 4px 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+    text-wrap: pretty;
+  }
+
+  .settings .hint {
+    animation: fade 260ms var(--glide);
+  }
+
+  .rows {
+    margin: 0 -4px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 8px;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: background 160ms;
+  }
+
+  .row:hover {
+    background: var(--hover);
+  }
+
+  .row-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .row-title {
+    display: block;
+    font-weight: 600;
+    transition: color 240ms;
+  }
+
+  .row-desc {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+    transition: color 240ms;
+  }
+
+  .row.is-off .row-title {
+    color: var(--muted);
+  }
+
+  .row.is-off .row-desc {
+    color: var(--faint);
+  }
+
+  .row-count {
+    flex: none;
+    color: var(--faint);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    animation: fade 200ms;
+  }
+
+  /* A sketch of three posts in a feed. The middle one is hidden: a slim bar with the goblin on
+   it, which folds away to nothing on Remove. */
+  .sketch {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 84px;
+    margin-bottom: 8px;
+    padding: 0 16px;
+    border-radius: 16px;
+    background: var(--well);
+  }
+
+  .sketch i {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .sketch-post {
+    height: 22px;
+  }
+
+  .sketch-post::before {
+    content: "";
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--track);
+  }
+
+  .sketch-post::after {
+    content: "";
+    width: 62%;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--track);
+  }
+
+  .sketch-bar {
+    height: 16px;
+    padding-left: 1px;
+    color: var(--accent);
+    transition:
+      height 420ms var(--glide),
+      opacity 260ms;
+  }
+
+  .sketch-bar svg {
+    flex: none;
+    width: 12px;
+    height: 9px;
+    fill: currentColor;
+    fill-rule: evenodd;
+  }
+
+  .sketch-bar::after {
+    content: "";
+    width: 34%;
+    height: 4px;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.45;
+  }
+
+  .sketch[data-mode="remove"] .sketch-bar {
+    height: 0;
+    opacity: 0;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 4px;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 30px;
+    padding: 0 4px 0 12px;
+    border-radius: 9999px;
+    background: var(--well);
+    font-weight: 600;
+    animation: pop 320ms var(--spring);
+  }
+
+  .chip button {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .chip button:hover {
+    background: var(--well-strong);
+    color: var(--ink);
+  }
+
+  .key {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 48px;
+    padding: 0 8px 0 16px;
+    border-radius: 16px;
+    background: var(--well);
+  }
+
+  /* Controls */
+
+  .icon-button {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    cursor: pointer;
+    transition: background 160ms;
+  }
+
+  .icon {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* The knob springs across, and stretches while it's held down. */
+  .switch {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--track);
+    cursor: pointer;
+    transition: background 220ms;
+  }
+
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: var(--knob);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
+    transition:
+      transform 380ms var(--spring),
+      width 200ms var(--glide);
+  }
+
+  .switch:active::after {
+    width: 20px;
+  }
+
+  .switch[aria-checked="true"] {
+    background: var(--fill);
+  }
+
+  .switch[aria-checked="true"]::after {
+    transform: translateX(14px);
+  }
+
+  .switch[aria-checked="true"]:active::after {
+    transform: translateX(10px);
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--well-strong);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background 160ms,
+      transform 200ms var(--spring);
+  }
+
+  .button:hover {
+    background: var(--track);
+  }
+
+  .button:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
+  .button.primary {
+    background: var(--fill);
+    color: var(--on-fill);
+  }
+
+  .button.primary:hover {
+    filter: brightness(1.07);
+  }
+
+  .button.small {
+    height: 28px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  .button.wide {
+    width: 100%;
+    height: 44px;
+    font-size: 14px;
+  }
+
+  .button:disabled {
+    opacity: 0.45;
+    cursor: default;
+    filter: none;
+  }
+
+  /* Setup */
+
+  .setup {
+    padding: 4px 4px 0;
+  }
+
+  .lede {
+    margin: 4px 0 24px;
+    font: 700 22px/27px var(--display);
+    letter-spacing: -0.02em;
+    text-wrap: pretty;
+  }
+
+  .setup label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .setup input {
+    width: 100%;
+    height: 44px;
+    margin-bottom: 12px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--well);
+    font-size: 14px;
+    transition: box-shadow 160ms;
+  }
+
+  .setup input:focus {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--fill);
+  }
+
+  .error {
+    margin: -4px 0 12px;
+    color: var(--danger);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .setup .hint {
+    margin: 16px 0 0;
+  }
+
+  .setup .hint + .hint {
+    margin-top: 8px;
+  }
+}
+
+/* 108×84 at 1px per unit; the sheet's top edge cuts across y=50 right under the nose tip,
+   keeping the fanged mouth tucked behind the sheet until the goblin lunges up to chomp. */
+.lurker {
+  position: absolute;
+  z-index: 0;
+  top: -50px;
+  right: 26px;
+  width: 108px;
+  height: 84px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.goblin-stop-hi {
+  stop-color: var(--goblin-hi);
+}
+
+.goblin-stop-mid {
+  stop-color: var(--goblin-mid);
+}
+
+.goblin-stop-lo {
+  stop-color: var(--goblin-lo);
+}
+
+.goblin-stop-deep {
+  stop-color: var(--goblin-deep);
+}
+
+.lurker-outline {
+  stroke: var(--goblin-outline);
+}
+
+.lurker-rim {
+  stroke: var(--goblin-rim);
+  opacity: 0.62;
+}
+
+.lurker-cheek {
+  fill: var(--goblin-hi);
+  opacity: 0.28;
+}
+
+.lurker-nose {
+  fill: var(--goblin-lo);
+}
+
+.lurker-nostril {
+  fill: var(--goblin-outline);
+}
+
+.lurker-brow-hi {
+  stroke: var(--goblin-hi);
+  opacity: 0.75;
+}
+
+.lurker-pupils,
+.lurker-glints,
+.lurker-brows {
+  transition: transform 170ms ease-out;
+}
+
+.lurker-open,
+.lurker-shut {
+  animation: fade 180ms ease-out;
+}
+
+.lurker-sleep-lid {
+  fill: #4f7c15;
+  stroke: var(--goblin-outline);
+}
+
+.lurker-lid {
+  fill: var(--goblin-mid);
+  stroke: var(--goblin-outline);
+  stroke-width: 1.6;
+  transform-box: fill-box;
+  transform-origin: top;
+  transform: scaleY(0);
+  animation: blink 5.8s 2s infinite;
+}
+
+/* It peeks up from behind the sheet when the panel opens. */
+.lurker-rise {
+  animation: rise 760ms var(--spring) 160ms both;
+}
+
+.lurker-sink {
+  transition: transform 700ms var(--glide);
+}
+
+/* Asleep, it sinks into its den and breathes slowly. */
+.is-asleep .lurker-sink {
+  transform: translateY(5.5px);
+}
+
+.lurker-jaw {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+.is-asleep .lurker-jaw {
+  animation: breathe 3.6s ease-in-out 700ms infinite;
+}
+
+@keyframes breathe {
+  50% {
+    transform: translateY(-0.8px) scale(1.015, 0.985);
+  }
+}
+
+.lurker-hands {
+  position: absolute;
+  z-index: 2;
+  top: -7px;
+  right: 26px;
+  display: flex;
+  justify-content: space-between;
+  width: 108px;
+  padding: 0 7px;
+  pointer-events: none;
+  animation: drop 420ms var(--glide) 420ms both;
+}
+
+.lurker-hand {
+  display: block;
+  transform-origin: 14px 9px;
+  transition: transform 380ms var(--spring);
+}
+
+/* While a key is typed in, the hands let go of the sheet and clap up over its eyes. */
+.lurker-hands.is-shy .lurker-hand.is-left {
+  transform: translate(13px, -11px) rotate(-152deg);
+}
+
+.lurker-hands.is-shy .lurker-hand.is-right {
+  transform: translate(-13px, -11px) rotate(152deg);
+}
+
+.lurker-hand-shadow {
+  fill: var(--goblin-hand-shadow);
+  transition: opacity 220ms;
+}
+
+.lurker-hands.is-shy .lurker-hand-shadow {
+  opacity: 0.55;
+}
+
+.lurker-palm {
+  opacity: 0;
+  transition: opacity 180ms;
+}
+
+.lurker-hands.is-shy .lurker-palm {
+  opacity: 1;
+}
+
+.lurker-knuckle {
+  fill: var(--goblin-rim);
+  opacity: 0.58;
+}
+
+/* Off the goblin's notched left ear, drifting up and away from the header's controls. */
+.lurker-z {
+  position: absolute;
+  z-index: 2;
+  top: -42px;
+  right: 126px;
+  color: var(--on-ground-muted);
+  font: 800 13px/1 var(--display);
+  pointer-events: none;
+}
+
+.lurker-z i {
+  position: absolute;
+  right: 0;
+  font-style: normal;
+  opacity: 0;
+  animation: drift 3.2s ease-in 900ms infinite;
+}
+
+.lurker-z i + i {
+  font-size: 10px;
+  animation-delay: 2500ms;
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(18px);
+  }
+}
+
+/* Drops 4px into place: the hands onto the sheet, and the buttons in a tray. */
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(0);
+  }
+  97% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes drift {
+  0% {
+    opacity: 0;
+    transform: translate(0, 4px);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-10px, -12px);
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateX(var(--from));
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0.2;
+    transform: translateY(4px) scale(0.7);
+  }
+}
+
+@keyframes row-in {
+  from {
+    grid-template-rows: 0fr;
+    margin-bottom: 0;
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes row-out {
+  to {
+    grid-template-rows: 0fr;
+    margin-bottom: 0;
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* The z's still say it's asleep, standing where they'd drift. */
+  .lurker-z i {
+    opacity: 1;
+    transform: translate(-3px, -5px);
+  }
+
+  .lurker-z i + i {
+    transform: translate(-12px, -17px);
+  }
+}

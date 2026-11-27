@@ -1,5 +1,5 @@
 import { isReply, type PostContent, type ReaderNote } from "./post.ts";
-import { ASKED, FINE, QUESTION, type CategoryId } from "./taxonomy.ts";
+import { FINE, QUESTION, askedFor, type CategoryId } from "./taxonomy.ts";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/decisions";
 const MODEL = "gemini-decision-1";
@@ -12,11 +12,9 @@ export const USD_PER_MILLION_TOKENS = 0.1;
 
 export type Scores = Partial<Record<CategoryId, number>>;
 
-const optionsFor = (reply: boolean) => ASKED.filter((c) => reply || !("repliesOnly" in c));
-
 // One question only: multiple questions in one request sway each other's answers.
 function questionsFor(reply: boolean) {
-  const options = optionsFor(reply);
+  const options = askedFor(reply);
   return {
     kind: {
       type: "choice",
@@ -125,7 +123,7 @@ export async function decide(
   const probabilities = json.answers?.kind?.probabilities;
   if (!probabilities) throw new DecisionError("fatal", "Gemini gave no answer");
   return {
-    scores: Object.fromEntries(optionsFor(reply).map((o) => [o.id, probabilities[o.id] ?? 0])),
+    scores: Object.fromEntries(askedFor(reply).map((o) => [o.id, probabilities[o.id] ?? 0])),
     tokens: json.usage?.total_input_tokens ?? 0,
   };
 }

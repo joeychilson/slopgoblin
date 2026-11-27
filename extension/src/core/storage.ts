@@ -1,11 +1,14 @@
 // For programs that import this outside Chrome, like the eval and the website.
 /// <reference types="chrome" />
+import type { CheckedPost } from "./checked.ts";
 
 /**
- * What Slop Goblin keeps in `chrome.storage`, besides the settings (`settings.ts`) and the
- * checked list (`checked.ts`). Nothing is kept anywhere else, apart from the service worker's
- * cache of answers in IndexedDB (`background/cache.ts`).
+ * What Slop Goblin keeps in `chrome.storage`, besides the settings (`settings.ts`). Nothing is
+ * kept anywhere else, apart from the service worker's cache of answers in IndexedDB
+ * (`background/cache.ts`).
  */
+
+type Area = "local" | "sync" | "session";
 
 /** One value in one storage area. */
 export interface Stored<T> {
@@ -16,21 +19,59 @@ export interface Stored<T> {
   watch(onChange: (value: T | undefined) => void): () => void;
 }
 
-export function stored<T>(area: "local" | "sync" | "session", key: string): Stored<T> {
+export function stored<T>(area: Area, key: string): Stored<T> {
   // Looked up on use, so code built on this can be imported outside Chrome, as the eval does.
   const storage = () => chrome.storage[area];
   return {
     get: async () => (await storage().get(key))[key] as T | undefined,
     set: (value) => storage().set({ [key]: value }),
     remove: () => storage().remove(key),
-    watch(onChange) {
-      const listener = (changes: Record<string, chrome.storage.StorageChange>, changed: string) => {
-        if (changed === area && key in changes) onChange(changes[key]!.newValue as T | undefined);
-      };
-      chrome.storage.onChanged.addListener(listener);
-      return () => chrome.storage.onChanged.removeListener(listener);
-    },
+    watch: (onChange) =>
+      watchArea(area, (changes) => {
+        if (key in changes) onChange(changes[key]!.newValue as T | undefined);
+      }),
   };
+}
+
+/**
+ * Values by id in one storage area, each under its own key, so a change writes and announces only
+ * that value.
+ */
+function storedEach<T>(area: Area, prefix: string) {
+  const storage = () => chrome.storage[area];
+  const byId = <V>(items: Record<string, V>) =>
+    new Map(
+      Object.entries(items).flatMap(([key, value]) =>
+        key.startsWith(prefix) ? [[key.slice(prefix.length), value] as const] : [],
+      ),
+    );
+  return {
+    getAll: async () => byId((await storage().get(null)) as Record<string, T>),
+    set: (values: Record<string, T>) =>
+      storage().set(
+        Object.fromEntries(Object.entries(values).map(([id, value]) => [prefix + id, value])),
+      ),
+    remove: (ids: string[]) => storage().remove(ids.map((id) => prefix + id)),
+    /** Calls `onChange` with each id that changed and its new value, undefined once removed. */
+    watch: (onChange: (changes: Map<string, T | undefined>) => void) =>
+      watchArea(area, (changes) => {
+        const mine = byId(changes);
+        if (mine.size) {
+          onChange(new Map([...mine].map(([id, { newValue }]) => [id, newValue as T | undefined])));
+        }
+      }),
+  };
+}
+
+function watchArea(
+  area: Area,
+  onChange: (changes: Record<string, chrome.storage.StorageChange>) => void,
+) {
+  const listener = (changes: Record<string, chrome.storage.StorageChange>, changed: string) => {
+    if (changed === area) onChange(changes);
+  };
+  chrome.storage.onChanged.addListener(listener);
+  return () => chrome.storage.onChanged.removeListener(listener);
 }
 
 /** How the Decisions API last answered, for the side panel's notices. */
@@ -62,4 +103,6 @@ export const store = {
   status: stored<ServiceStatus>("session", "status"),
   usage: stored<Usage>("local", "usage"),
   siteTheme: stored<SiteTheme>("local", "siteTheme"),
+  /** Posts checked in this Chrome session, in any tab, by id: in memory, like the status. */
+  checked: storedEach<CheckedPost>("session", "checked:"),
 };

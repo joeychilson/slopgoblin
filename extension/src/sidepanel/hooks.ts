@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CHECKED_PREFIX, type CheckedPost } from "../core/checked.ts";
+import type { CheckedPost } from "../core/checked.ts";
 import type { RuntimeMessage, TabMessage, TabState } from "../core/messages.ts";
 import { loadSettings, updateSettings, watchSettings, type Settings } from "../core/settings.ts";
 import { store, thisMonth, type Stored } from "../core/storage.ts";
@@ -48,29 +48,22 @@ export function useChecked() {
     let loaded = false;
     const publish = () => loaded && setChecked([...posts.values()].sort((a, b) => b.at - a.at));
 
-    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area !== "session") return;
-      let touched = false;
-      for (const [key, { newValue }] of Object.entries(changes)) {
-        if (!key.startsWith(CHECKED_PREFIX)) continue;
-        touched = true;
-        if (!loaded) changed.add(key);
-        if (newValue) posts.set(key, newValue as CheckedPost);
-        else posts.delete(key);
+    const unwatch = store.checked.watch((changes) => {
+      for (const [id, post] of changes) {
+        if (!loaded) changed.add(id);
+        if (post) posts.set(id, post);
+        else posts.delete(id);
       }
-      if (touched) publish();
-    };
-    chrome.storage.onChanged.addListener(onChanged);
-    void chrome.storage.session.get(null).then((all) => {
-      for (const [key, value] of Object.entries(all)) {
-        if (key.startsWith(CHECKED_PREFIX) && !changed.has(key)) {
-          posts.set(key, value as CheckedPost);
-        }
+      publish();
+    });
+    void store.checked.getAll().then((all) => {
+      for (const [id, post] of all) {
+        if (!changed.has(id)) posts.set(id, post);
       }
       loaded = true;
       publish();
     });
-    return () => chrome.storage.onChanged.removeListener(onChanged);
+    return unwatch;
   }, []);
   return checked;
 }

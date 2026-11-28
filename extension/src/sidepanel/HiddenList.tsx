@@ -27,15 +27,15 @@ const PAGE_SIZE = 50;
 /**
  * A row the reader just let through. It stays where it was, saying what happened with an Undo,
  * then folds away, like the post's bar in the feed.
+ * - `confirm`: shows the let-through line with Undo.
+ * - `leaving`: folds away after the confirm window.
+ * - `quiet`: another post by a newly trusted author, folding away immediately.
+ * - `restoring`: shown as hidden again while the list catches up after Undo.
  */
 interface Settling {
   item: HiddenPost;
   action: LetThrough;
-  leaving: boolean;
-  /** Another post by an author just marked "Always show": it only folds away. */
-  quiet?: boolean;
-  /** Shown as hidden again while the list catches up. */
-  undone?: boolean;
+  phase: "confirm" | "leaving" | "quiet" | "restoring";
   /** True once `hidden` has reflected the let-through; reappearing means it was undone. */
   gone?: boolean;
 }
@@ -48,10 +48,19 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   const [choosing, setChoosing] = useState(false);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [settling, setSettling] = useState<ReadonlyMap<string, Settling>>(new Map());
+  const [prevHidden, setPrevHidden] = useState(hidden);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const title = useRef<HTMLButtonElement>(null);
   const picker = useRef<HTMLDivElement>(null);
   const kindsId = useId();
+
+  // Track when let-through rows leave `hidden`, and hand them back as soon as they return
+  // (whether undone here, from the post's bar in the feed, or from Settings).
+  if (hidden !== prevHidden) {
+    setPrevHidden(hidden);
+    const next = reconcileSettling(settling, hidden);
+    if (next !== settling) setSettling(next);
+  }
 
   // Rows there when the panel opens arrive one after another; rows that turn up later, from a
   // new post or a filter, arrive at once.
@@ -101,29 +110,15 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [choosing]);
 
-  // Track when let-through rows leave `hidden`, and hand them back as soon as they return
-  // (whether undone here, from the post's bar in the feed, or from Settings).
+  // Cancel timers for rows that returned to `hidden` or finished leaving.
   useEffect(() => {
-    const listed = new Set(hidden.map(({ post }) => post.id));
-    setSettling((prev) => {
-      if (!prev.size) return prev;
-      let changed = false;
-      const next = new Map(prev);
-      for (const [id, s] of prev) {
-        if (!listed.has(id)) {
-          if (!s.gone) {
-            next.set(id, { ...s, gone: true });
-            changed = true;
-          }
-        } else if (s.gone) {
-          clearTimer(id);
-          next.delete(id);
-          changed = true;
-        }
+    for (const [id, timer] of timers.current) {
+      if (!settling.has(id)) {
+        clearTimeout(timer);
+        timers.current.delete(id);
       }
-      return changed ? next : prev;
-    });
-  }, [hidden]);
+    }
+  }, [settling]);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
@@ -140,13 +135,8 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     return () => removeEventListener("scroll", onScroll);
   }, [loaded, remaining]);
 
-  function clearTimer(id: string) {
-    clearTimeout(timers.current.get(id));
-    timers.current.delete(id);
-  }
-
   function later(id: string, ms: number, run: () => void) {
-    clearTimer(id);
+    clearTimeout(timers.current.get(id));
     timers.current.set(
       id,
       setTimeout(() => {
@@ -156,11 +146,11 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     );
   }
 
-  function drop(...ids: string[]) {
-    for (const id of ids) clearTimer(id);
+  function drop(id: string) {
     setSettling((prev) => {
+      if (!prev.has(id)) return prev;
       const next = new Map(prev);
-      for (const id of ids) next.delete(id);
+      next.delete(id);
       return next;
     });
   }
@@ -177,9 +167,9 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
         : [];
     setOpen(null);
     setSettling((prev) => {
-      const next = new Map(prev).set(id, { item, action, leaving: false });
+      const next = new Map(prev).set(id, { item, action, phase: "confirm" });
       for (const other of others) {
-        next.set(other.post.id, { item: other, action, leaving: true, quiet: true });
+        next.set(other.post.id, { item: other, action, phase: "quiet" });
       }
       return next;
     });
@@ -203,7 +193,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     }
     setSettling((prev) => {
       const settled = prev.get(id);
-      return settled ? new Map(prev).set(id, { ...settled, leaving: true }) : prev;
+      return settled ? new Map(prev).set(id, { ...settled, phase: "leaving" }) : prev;
     });
     later(id, LEAVE_MS, () => drop(id));
   }
@@ -219,7 +209,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
       id,
       ...(action === "trust"
         ? [...settling.values()]
-            .filter((s) => s.quiet && s.item.post.handle.toLowerCase() === handle)
+            .filter((s) => s.phase === "quiet" && s.item.post.handle.toLowerCase() === handle)
             .map((s) => s.item.post.id)
         : []),
     ];
@@ -227,7 +217,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
       const next = new Map(prev);
       for (const otherId of restored) {
         const current = prev.get(otherId);
-        if (current) next.set(otherId, { ...current, undone: true, leaving: false, quiet: false });
+        if (current) next.set(otherId, { ...current, phase: "restoring" });
       }
       return next;
     });
@@ -346,8 +336,12 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
                 item={item}
                 order={initialOrder.get(id)}
                 open={open === id}
-                settled={settled && !settled.undone && !settled.quiet ? settled.action : undefined}
-                leaving={Boolean(settled?.leaving)}
+                settled={
+                  settled && (settled.phase === "confirm" || settled.phase === "leaving")
+                    ? settled.action
+                    : undefined
+                }
+                leaving={settled?.phase === "leaving" || settled?.phase === "quiet"}
                 onToggle={(next) => {
                   if (next) setChoosing(false);
                   setOpen(next ? id : null);
@@ -363,6 +357,25 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
       )}
     </section>
   );
+}
+
+function reconcileSettling(prev: ReadonlyMap<string, Settling>, hidden: HiddenPost[]) {
+  if (!prev.size) return prev;
+  const listed = new Set(hidden.map(({ post }) => post.id));
+  let changed = false;
+  const next = new Map(prev);
+  for (const [id, s] of prev) {
+    if (!listed.has(id)) {
+      if (!s.gone) {
+        next.set(id, { ...s, gone: true });
+        changed = true;
+      }
+    } else if (s.gone) {
+      next.delete(id);
+      changed = true;
+    }
+  }
+  return changed ? next : prev;
 }
 
 function Kind(props: {

@@ -676,22 +676,28 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
       text: "Wait for it [ai_slop .8]",
       media: "photo",
     };
-    const m = await launch([photo]);
+    const m = await launch([]);
     try {
       const page = await m.ctx.newPage();
       await page.goto("https://x.com/home");
+      // Once the extension is running, so the post's timeouts start when it turns up.
+      await page.waitForSelector("html[data-sg-theme]", { state: "attached" });
+      await append(page, cell(photo));
       // Still waiting past the 300ms fast-settle window while tweetPhoto is empty.
-      await sleep(450);
+      await sleep(350);
       expect(m.sent).toEqual([]);
 
-      const arrived = Date.now();
-      await page.locator(cellOf("photopost")).evaluate((el) => {
+      // A text post turns up as the image does. It's asked about once it has settled for 300ms,
+      // so the photo goes first only if the image woke it, rather than its 1s timeout.
+      const text = cell({ id: "612", handle: "textpost", name: "Text Post", text: "Hello" });
+      await page.locator(cellOf("photopost")).evaluate((el, text) => {
         const img = document.createElement("img");
         img.src = "https://pbs.twimg.com/media/hydrated.jpg?format=jpg&name=small";
         el.querySelector('[data-testid="tweetPhoto"]')!.append(img);
-      });
-      await poll(() => m.sent.length).toBe(1);
-      expect(Date.now() - arrived).toBeLessThan(250);
+        el.insertAdjacentHTML("afterend", text);
+      }, text);
+      await poll(() => m.sent.length).toBe(2);
+      expect(m.sent.map(handleIn)).toEqual(["photopost", "textpost"]);
       expect(m.sent[0]).toMatch(/Attached image/);
       await shows(page, "photopost", "collapsed", /^AI slop from Photo Post/);
     } finally {

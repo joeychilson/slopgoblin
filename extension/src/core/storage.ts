@@ -1,11 +1,11 @@
 // For programs that import this outside Chrome, like the eval and the website.
 /// <reference types="chrome" />
 import type { CheckedPost } from "./checked.ts";
+import type { Settings } from "./settings.ts";
 
 /**
- * What Slop Goblin keeps in `chrome.storage`, besides the settings (`settings.ts`). Nothing is
- * kept anywhere else, apart from the service worker's cache of answers in IndexedDB
- * (`background/cache.ts`).
+ * What Slop Goblin keeps in `chrome.storage`. Nothing is kept anywhere else, apart from the
+ * service worker's cache of answers in IndexedDB (`background/cache.ts`).
  */
 
 type Area = "local" | "sync" | "session";
@@ -111,6 +111,11 @@ export const thisMonth = () => new Date().toISOString().slice(0, 7);
 export type SiteTheme = "light" | "dim" | "dark";
 
 export const store = {
+  /**
+   * Synced through the reader's Chrome profile. Only what the reader changed is saved, so
+   * `settings.ts` reads and changes it, filling in the defaults.
+   */
+  settings: stored<Partial<Settings>>("sync", "settings"),
   /** The reader's Gemini API key. Local, not synced: it's only ever sent to Google. */
   apiKey: stored<string>("local", "apiKey"),
   /** In memory, like the checked list: it describes this browser session. */

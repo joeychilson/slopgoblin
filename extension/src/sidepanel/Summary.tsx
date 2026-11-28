@@ -78,11 +78,3 @@ export function Message(props: { title: string; children?: ReactNode; action?: R
     </div>
   );
 }
-
-export function Button(props: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" className="button primary" onClick={props.onClick}>
-      {props.children}
-    </button>
-  );
-}

@@ -19,7 +19,7 @@ import { HostContext } from "./host.ts";
 import { Lurker } from "./Lurker.tsx";
 import { Settings } from "./Settings.tsx";
 import { Setup } from "./Setup.tsx";
-import { Button, Message } from "./Summary.tsx";
+import { Message } from "./Summary.tsx";
 
 export function App() {
   const settings = useSettings();
@@ -113,7 +113,15 @@ function tabMessage(tab: ActiveTab | null, checked: number) {
     return (
       <Message
         title="Reload to start"
-        action={<Button onClick={() => void chrome.tabs.reload(id)}>Reload tab</Button>}
+        action={
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => void chrome.tabs.reload(id)}
+          >
+            Reload tab
+          </button>
+        }
       >
         This tab was open before Slop Goblin was.
       </Message>
@@ -124,9 +132,13 @@ function tabMessage(tab: ActiveTab | null, checked: number) {
       <Message
         title="Not on X"
         action={
-          <Button onClick={() => void chrome.tabs.create({ url: "https://x.com/home" })}>
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => void chrome.tabs.create({ url: "https://x.com/home" })}
+          >
             Open x.com
-          </Button>
+          </button>
         }
       >
         Open X and the goblin starts checking posts.

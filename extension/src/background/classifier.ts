@@ -57,7 +57,7 @@ export function restoreApiKey(key: string | undefined, status: ServiceStatus | u
 export function classify(
   post: Post,
   cachedOnly: boolean,
-  priority: Priority = 0,
+  priority: Priority,
 ): Promise<ClassifyResponse> {
   const key = questionKey(post);
   if (cachedOnly) return run(post, key, true, () => priority);

@@ -19,7 +19,7 @@ export function LiveFeed({ demo }: { demo: Demo }) {
       <div className="feed-goblin">
         <Lurker awake={demo.settings.enabled} fed={demo.hidden.length} />
       </div>
-      <ol ref={feed} id="feed" className="feed" aria-label="A feed, with Slop Goblin on it">
+      <ol ref={feed} className="feed" aria-label="A feed, with Slop Goblin on it">
         {posts.map((post) => (
           <FeedPost
             key={post.id}

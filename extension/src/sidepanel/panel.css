@@ -1293,7 +1293,8 @@
   }
 }
 
-/* Drops 4px into place: the hands onto the sheet, and the buttons in a tray. */
+/* Drops 4px into place: the hands onto the sheet, the buttons in a tray, and the kinds in the
+   hidden list's select. */
 @keyframes drop {
   from {
     opacity: 0;

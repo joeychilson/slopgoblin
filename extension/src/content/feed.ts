@@ -28,7 +28,7 @@ const KEEP = 2000;
 
 interface Tracked extends PostState {
   post: Post;
-  status: "idle" | "pending" | "done" | "failed";
+  status: "idle" | "pending" | "done";
   queued?: boolean;
   scores: Scores;
   notSlop: boolean;
@@ -274,7 +274,7 @@ class Feed {
   }
 
   private wantsRequest(t: Tracked) {
-    return !this.stopped && (t.status === "idle" || t.status === "failed") && this.worthAsking(t);
+    return !this.stopped && t.status === "idle" && this.worthAsking(t);
   }
 
   private askIfNear(t: Tracked) {
@@ -322,9 +322,8 @@ class Feed {
     } else if ("needsKey" in res) {
       this.setIdle(t);
     } else {
-      t.status = "failed";
+      this.setIdle(t);
       setTimeout(() => this.askIfNear(t), RETRY_MS);
-      this.changed();
     }
   }
 

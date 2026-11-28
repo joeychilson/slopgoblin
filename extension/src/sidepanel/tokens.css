@@ -1,4 +1,4 @@
-/* Every color is a token with its light and dark value. The site's theme picks which. */
+/* Each color token has its light and dark value. The site's theme picks which. */
 :root {
   color-scheme: light dark;
   --ground: light-dark(#547b1d, #1f2d11);

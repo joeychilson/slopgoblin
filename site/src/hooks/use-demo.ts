@@ -90,6 +90,18 @@ export function useDemo() {
     });
   }, []);
 
+  const act = useCallback(
+    (post: CheckedPost, action: BarAction) => {
+      const next = step(stateOf(post, done.get(post.id)), action);
+      setDone((all) =>
+        new Map(all).set(post.id, { revealed: next.revealed, letThrough: next.letThrough }),
+      );
+      if (next.trust !== undefined) update(trusting(post.handle, next.trust));
+      if (next.notSlop !== undefined) markNotSlop(post.id, next.notSlop);
+    },
+    [done, update, markNotSlop],
+  );
+
   const host = useMemo<Host>(
     () => ({
       updateSettings: update,
@@ -102,27 +114,16 @@ export function useDemo() {
           return new Map(all).set(id, { revealed: was?.revealed ?? false, letThrough });
         });
       },
+      // As in X: the post opens where it is, with its line, and the feed scrolls to it.
       showInFeed: (post) => {
-        setDone((all) => {
-          const { revealed, letThrough } = step(stateOf(post, all.get(post.id)), "reveal");
-          return new Map(all).set(post.id, { revealed, letThrough });
-        });
+        act(post, "reveal");
         document
           .getElementById(`post-${post.id}`)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
       },
     }),
-    [update, markNotSlop, hidden],
+    [update, markNotSlop, hidden, act],
   );
-
-  const act = (post: DemoPost, action: BarAction) => {
-    const next = step(stateOf(post, done.get(post.id)), action);
-    setDone((all) =>
-      new Map(all).set(post.id, { revealed: next.revealed, letThrough: next.letThrough }),
-    );
-    if (next.trust !== undefined) update(trusting(post.handle, next.trust));
-    if (next.notSlop !== undefined) markNotSlop(post.id, next.notSlop);
-  };
 
   return {
     settings,

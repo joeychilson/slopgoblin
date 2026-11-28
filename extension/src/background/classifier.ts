@@ -99,7 +99,9 @@ async function run(
 ): Promise<ClassifyResponse> {
   let entry = await getEntry(post.id);
   const now = Date.now();
-  if (entry?.key === key) {
+  // A post the reader let through won't be hidden, so it isn't asked about again even when it
+  // turns up with more context than it was answered on.
+  if (entry && (entry.key === key || entry.notSlop)) {
     if (now - entry.seen > TOUCH_MS) void putEntry({ ...entry, seen: now }).catch(() => {});
     return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
   }

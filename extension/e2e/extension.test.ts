@@ -757,6 +757,29 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
     }
   });
 
+  it("doesn't ask again about a post the reader let through, when it turns up with a note", async () => {
+    const post = { id: "624", handle: "slopper", name: "Growth Guru", text: "Hooks [ai_slop .8]" };
+    const m = await launch([post]);
+    try {
+      const home = await m.ctx.newPage();
+      await home.goto("https://x.com/home");
+      await shows(home, "slopper", "collapsed");
+      await click(home, "slopper", ".sg-row");
+      await click(home, "slopper", "[data-sg-action=not-slop]");
+      await shows(home, "slopper", "confirmed");
+      // Elsewhere, the post turns up again with a community note, so it reads differently.
+      const other = await m.ctx.newPage();
+      await other.goto("https://x.com/explore");
+      await other.waitForSelector("html[data-sg-theme]", { state: "attached" });
+      await append(other, cell({ ...post, note: "Made with AI." }));
+      await shows(other, "slopper", "shown");
+      await sleep(1500);
+      expect(m.sent).toHaveLength(1);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
   it("judges a post whose text arrives after it first mounted empty", async () => {
     const empty: MockPost = {
       id: "611",

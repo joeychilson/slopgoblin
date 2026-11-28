@@ -863,7 +863,31 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
   });
 });
 
-describe("side panel focus", { timeout: 60_000 }, () => {
+describe("keyboard focus", { timeout: 60_000 }, () => {
+  it("stays in X's bar as its buttons change", async () => {
+    const post = { id: "628", handle: "rager", name: "Rage Farm", text: "Outrage [ragebait .9]" };
+    const m = await launch([post]);
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await shows(x, "rager", "collapsed");
+      const focused = (action: string) =>
+        poll(() => x.locator(`[data-sg-action=${action}]:focus`).count()).toBe(1);
+      await x.focus("[data-sg-action=reveal]");
+      await x.keyboard.press("Enter");
+      await focused("hide");
+      await x.focus("[data-sg-action=not-slop]");
+      await x.keyboard.press("Enter");
+      await focused("undo");
+      await x.keyboard.press("Enter");
+      await focused("hide");
+      await x.keyboard.press("Enter");
+      await focused("reveal");
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
   it("moves along the Always show chips as they're removed", async () => {
     const m = await launch([]);
     try {

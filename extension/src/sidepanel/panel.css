@@ -879,11 +879,12 @@
     opacity: 0;
   }
 
+  /* Apart from the switch row above, so a highlighted row and the chips don't run together. */
   .chips {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin: 0 4px;
+    margin: 12px 4px 0;
   }
 
   .chip {
@@ -893,7 +894,7 @@
     height: 30px;
     padding: 0 4px 0 12px;
     border-radius: 9999px;
-    background: var(--well);
+    background: var(--well-strong);
     font-weight: 600;
     animation: pop 320ms var(--spring);
   }
@@ -907,7 +908,7 @@
     border: 0;
     border-radius: 50%;
     background: none;
-    color: var(--muted);
+    color: var(--ink-2);
     cursor: pointer;
   }
 

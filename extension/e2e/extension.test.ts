@@ -402,13 +402,15 @@ describe("on X", { timeout: 30_000 }, () => {
   });
 
   it("shows one kind of hidden post, picked from the list's title", async () => {
-    await panel.selectOption(".list-title select", "ragebait");
+    await panel.click(".list-title");
+    await panel.click('.list-title option:has-text("Ragebait")');
     await poll(() => panel.locator(".list .item").count()).toBe(1);
     expect(await panel.innerText(".list")).toContain("Rage Farm");
     // The heading is named by what it shows, not by the options beside it.
     const heading = (name: string) => panel.getByRole("heading", { level: 2, name, exact: true });
     expect(await heading("Ragebait").count()).toBe(1);
-    await panel.selectOption(".list-title select", "");
+    await panel.click(".list-title");
+    await panel.click('.list-title option:has-text("All")');
     await poll(() => panel.locator(".list .item").count()).toBeGreaterThan(1);
     expect(await heading("Hidden posts").count()).toBe(1);
   });

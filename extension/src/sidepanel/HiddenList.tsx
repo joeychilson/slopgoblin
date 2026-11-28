@@ -160,11 +160,15 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
                 if (initialOrder.size) setInitialOrder(new Map());
               }}
             >
-              <option value="">All ({hidden.length})</option>
-              {kinds.map(([id, count]) => (
-                <option key={id} value={id}>
-                  {CATEGORY[id].label} ({count})
-                </option>
+              <KindOption value="" label="All" count={hidden.length} i={0} />
+              {kinds.map(([id, count], i) => (
+                <KindOption
+                  key={id}
+                  value={id}
+                  label={CATEGORY[id].label}
+                  count={count}
+                  i={i + 1}
+                />
               ))}
             </select>
           </div>
@@ -203,6 +207,24 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
         !recent && <p className="hint">Nothing hidden right now.</p>
       )}
     </section>
+  );
+}
+
+/**
+ * A kind in the list's select: "Ragebait (2)". Where Chrome draws the select's list from CSS, the
+ * brackets hide and the count sits at the row's end; the system's menu shows the text as it is.
+ */
+function KindOption(props: { value: string; label: string; count: number; i: number }) {
+  const { label, count } = props;
+  return (
+    <option value={props.value} aria-label={`${label} (${count})`} style={{ "--i": props.i }}>
+      <span className="kind-label">{label}</span>
+      <span className="row-count">
+        <span className="kind-bracket"> (</span>
+        {count}
+        <span className="kind-bracket">)</span>
+      </span>
+    </option>
   );
 }
 

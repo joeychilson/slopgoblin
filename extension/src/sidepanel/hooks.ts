@@ -13,12 +13,16 @@ export const useSettings = () => useStored(SETTINGS);
 function useStored<T>(item: Pick<Stored<T>, "get" | "watch">): T | null | undefined {
   const [value, setValue] = useState<T | null>();
   useEffect(() => {
-    let changed = false;
-    void item.get().then((saved) => changed || setValue(saved ?? null));
-    return item.watch((next) => {
-      changed = true;
+    let settled = false;
+    void item.get().then((saved) => settled || setValue(saved ?? null));
+    const unwatch = item.watch((next) => {
+      settled = true;
       setValue(next ?? null);
     });
+    return () => {
+      settled = true;
+      unwatch();
+    };
   }, [item]);
   return value;
 }
@@ -41,7 +45,9 @@ export function useChecked() {
     /** Posts added or dropped while the list loaded: what it read of them is out of date. */
     const changed = new Set<string>();
     let loaded = false;
-    const publish = () => loaded && setChecked([...posts.values()].sort((a, b) => b.at - a.at));
+    let alive = true;
+    const publish = () =>
+      alive && loaded && setChecked([...posts.values()].sort((a, b) => b.at - a.at));
 
     const unwatch = store.checked.watch((changes) => {
       for (const [id, post] of changes) {
@@ -58,7 +64,10 @@ export function useChecked() {
       loaded = true;
       publish();
     });
-    return unwatch;
+    return () => {
+      alive = false;
+      unwatch();
+    };
   }, []);
   return checked;
 }
@@ -130,6 +139,7 @@ export function useActiveTab() {
     chrome.tabs.onUpdated.addListener(onUpdated);
     chrome.runtime.onMessage.addListener(onMessage);
     return () => {
+      seq++;
       chrome.tabs.onActivated.removeListener(refresh);
       chrome.tabs.onUpdated.removeListener(onUpdated);
       chrome.runtime.onMessage.removeListener(onMessage);
@@ -141,20 +151,6 @@ export function useActiveTab() {
 /** Resolves to undefined when Slop Goblin isn't running in the tab. */
 function sendToTab<T>(tabId: number, message: TabMessage): Promise<T | undefined> {
   return chrome.tabs.sendMessage<TabMessage, T>(tabId, message).catch(() => undefined);
-}
-
-/** The time, with a re-render every second until `until`, for countdowns. */
-export function useTicker(until: number) {
-  const [, setTicks] = useState(0);
-  const now = Date.now();
-  const active = until > now;
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(() => setTicks((n) => n + 1), 1000);
-    return () => clearInterval(timer);
-  }, [active]);
-  // Read on each render, so a countdown that starts while the panel is open starts right.
-  return now;
 }
 
 /** The panel's host in the extension: settings in Chrome's storage, posts in the reader's tabs. */

@@ -14,7 +14,6 @@ import {
   useSettings,
   useSiteTheme,
   useStatus,
-  useTicker,
 } from "./hooks.ts";
 import { HostContext } from "./host.ts";
 import { Lurker } from "./Lurker.tsx";
@@ -136,76 +135,78 @@ function tabMessage(tab: ActiveTab | null, checked: number) {
   }
 }
 
-interface NoticeContent {
-  title: string;
-  body: string;
-  error?: boolean;
-  action?: ReactNode;
-}
-
 function Notice(props: { status: ServiceStatus; broken?: boolean; enabled: boolean }) {
   const { status, broken = false, enabled } = props;
-  const now = useTicker(enabled && status.kind === "rate-limited" ? status.until : 0);
-  const notice = noticeFor(status, broken, enabled, now);
-  if (!notice) return null;
-  return (
-    <div
-      className={notice.error ? "notice is-error" : "notice"}
-      role={notice.error ? "alert" : undefined}
-    >
-      <p>
-        <strong>{notice.title}</strong>
-        {notice.body}
-      </p>
-      {notice.action}
-    </div>
-  );
-}
-
-function noticeFor(
-  status: ServiceStatus,
-  /** The active tab's posts can't be read. */
-  broken: boolean,
-  enabled: boolean,
-  now: number,
-): NoticeContent | null {
   if (status.kind === "bad-key") {
-    return {
-      title: "Google rejected your API key",
-      body: status.message,
-      error: true,
-      action: (
-        <button type="button" className="button small" onClick={() => void store.apiKey.remove()}>
-          Replace key
-        </button>
-      ),
-    };
+    return (
+      <NoticeBox
+        title="Google rejected your API key"
+        body={status.message}
+        error
+        action={
+          <button type="button" className="button small" onClick={() => void store.apiKey.remove()}>
+            Replace key
+          </button>
+        }
+      />
+    );
   }
   if (broken) {
-    return {
-      title: "Can't read posts on this page",
-      body: "X probably changed its layout. Posts stay visible until Slop Goblin is updated.",
-      error: true,
-    };
+    return (
+      <NoticeBox
+        title="Can't read posts on this page"
+        body="X probably changed its layout. Posts stay visible until Slop Goblin is updated."
+        error
+      />
+    );
   }
   // Nothing is being checked, so connection trouble doesn't matter.
   if (!enabled) return null;
   switch (status.kind) {
-    case "rate-limited": {
-      const seconds = Math.ceil((status.until - now) / 1000);
-      if (seconds <= 0) return null;
-      return {
-        title: "Gemini rate limit reached",
-        body: `Checking resumes in ${seconds}s. Free API keys have tight per-minute limits.`,
-      };
-    }
+    case "rate-limited":
+      return <RateLimitNotice key={status.until} until={status.until} />;
     case "offline":
-      return {
-        title: "Can't reach Gemini",
-        body: "Posts will be checked when the connection is back.",
-      };
+      return (
+        <NoticeBox
+          title="Can't reach Gemini"
+          body="Posts will be checked when the connection is back."
+        />
+      );
     case "error":
-      return { title: "Gemini returned an error", body: status.message, error: true };
+      return <NoticeBox title="Gemini returned an error" body={status.message} error />;
+    default:
+      return null;
   }
-  return null;
+}
+
+function RateLimitNotice({ until }: { until: number }) {
+  const [seconds, setSeconds] = useState(() => Math.ceil((until - Date.now()) / 1000));
+  const active = seconds > 0;
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => setSeconds(Math.ceil((until - Date.now()) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [until, active]);
+  if (!active) return null;
+  return (
+    <NoticeBox
+      title="Gemini rate limit reached"
+      body={`Checking resumes in ${seconds}s. Free API keys have tight per-minute limits.`}
+    />
+  );
+}
+
+function NoticeBox(props: { title: string; body: string; error?: boolean; action?: ReactNode }) {
+  return (
+    <div
+      className={props.error ? "notice is-error" : "notice"}
+      role={props.error ? "alert" : undefined}
+    >
+      <p>
+        <strong>{props.title}</strong>
+        {props.body}
+      </p>
+      {props.action}
+    </div>
+  );
 }

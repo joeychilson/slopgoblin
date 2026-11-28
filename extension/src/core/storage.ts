@@ -14,6 +14,11 @@ type Area = "local" | "sync" | "session";
 export interface Stored<T> {
   get(): Promise<T | undefined>;
   set(value: T): Promise<void>;
+  /**
+   * Changes what's saved. Changes in one page, or in the service worker, wait their turn, so none
+   * is lost.
+   */
+  update(change: (saved: T | undefined) => T): Promise<void>;
   remove(): Promise<void>;
   /** Calls `onChange` with every new value. Returns an unsubscribe. */
   watch(onChange: (value: T | undefined) => void): () => void;
@@ -22,9 +27,18 @@ export interface Stored<T> {
 export function stored<T>(area: Area, key: string): Stored<T> {
   // Looked up on use, so code built on this can be imported outside Chrome, as the eval does.
   const storage = () => chrome.storage[area];
+  const get = async () => (await storage().get(key))[key] as T | undefined;
+  const set = (value: T) => storage().set({ [key]: value });
+  let last: Promise<void> = Promise.resolve();
   return {
-    get: async () => (await storage().get(key))[key] as T | undefined,
-    set: (value) => storage().set({ [key]: value }),
+    get,
+    set,
+    update: (change) => {
+      const run = async () => set(change(await get()));
+      const next = last.then(run, run);
+      last = next.catch(() => {});
+      return next;
+    },
     remove: () => storage().remove(key),
     watch: (onChange) =>
       watchArea(area, (changes) => {

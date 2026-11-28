@@ -3,7 +3,7 @@ import type { ClassifyResponse, Priority } from "../core/messages.ts";
 import { REFUSED, needsScores } from "../core/policy.ts";
 import { isReply, type Post } from "../core/post.ts";
 import { loadSettings } from "../core/settings.ts";
-import { store, thisMonth, type ServiceStatus } from "../core/storage.ts";
+import { store, thisMonth, type ServiceStatus, type Usage } from "../core/storage.ts";
 import { getEntry, putEntry } from "./cache.ts";
 
 const CONCURRENCY = 4;
@@ -238,7 +238,6 @@ async function setStatus(status: ServiceStatus) {
 
 let unsaved = { posts: 0, tokens: 0 };
 let saving: ReturnType<typeof setTimeout> | undefined;
-let usageQueue: Promise<void> = Promise.resolve();
 
 function recordUsage(tokens: number) {
   unsaved.posts++;
@@ -247,17 +246,12 @@ function recordUsage(tokens: number) {
     saving = undefined;
     const added = unsaved;
     unsaved = { posts: 0, tokens: 0 };
-    const write = async () => {
+    const count = (saved: Usage | undefined): Usage => {
       const month = thisMonth();
-      const saved = await store.usage.get();
       const before = saved?.month === month ? saved : { posts: 0, tokens: 0 };
-      await store.usage.set({
-        month,
-        posts: before.posts + added.posts,
-        tokens: before.tokens + added.tokens,
-      });
+      return { month, posts: before.posts + added.posts, tokens: before.tokens + added.tokens };
     };
-    usageQueue = usageQueue.then(write, write).catch(() => {});
+    store.usage.update(count).catch(() => {});
   }, 1000);
 }
 

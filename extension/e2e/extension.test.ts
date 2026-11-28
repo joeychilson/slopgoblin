@@ -699,6 +699,34 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
     }
   });
 
+  it("counts this month's posts and their cost in Settings", async () => {
+    const m = await launch(
+      [
+        { id: "620", handle: "first", name: "First", text: "One" },
+        { id: "621", handle: "second", name: "Second", text: "Two" },
+      ],
+      (route) =>
+        route.fulfill({
+          json: {
+            answers: { kind: { probabilities: { fine: 1 } } },
+            usage: { total_input_tokens: 100_000 },
+          },
+        }),
+    );
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(2);
+      const panel = await openPanel(m.ctx, m.extension);
+      await panel.click('[aria-label="Settings"]');
+      await poll(() => panel.innerText("body")).toContain(
+        "2 posts checked this month: about $0.02 on a paid key, nothing on a free one.",
+      );
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
   it("judges a post whose text arrives after it first mounted empty", async () => {
     const empty: MockPost = {
       id: "611",

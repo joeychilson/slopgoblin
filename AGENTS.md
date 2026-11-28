@@ -11,11 +11,12 @@ right. For a change the website shows, look at it with `vp -C site dev`.
 - **Reshape, don't bolt on.** Find where a feature's rules belong and move shared logic there.
   Replace the old way rather than running two side by side.
 - **One place per rule.** What's hidden, and what Google is never asked about, is decided in
-  `core/policy.ts`; how a verdict reads, by `reason` there. What's stored, and where, is in
-  `core/storage.ts`. Everything specific to X is in `sites/`. These are in `extension/src/`.
-- **The website draws the extension's own parts.** Its side panel is the real one, and what its
-  feed hides comes from `core/policy.ts`. Only the bar in its feed is a copy, since `bar.ts` is
-  plain DOM.
+  `core/policy.ts`; how a verdict reads, by `reason` there. How a post shows in a feed and what its
+  bar actions do is in `content/view.ts`. What's stored, and where, is in `core/storage.ts`.
+  Everything specific to X is in `sites/`. These are in `extension/src/`.
+- **The website draws the extension's own parts.** Its side panel is the real one, what its feed
+  hides comes from `core/policy.ts`, and how each post shows and acts comes from `content/view.ts`.
+  Only the bar's markup in its feed is a copy, since `bar.ts` is plain DOM.
 - **Measure before rewording the model's question.** `QUESTION`, `FINE` and the categories'
   ids and `describes` in `core/taxonomy.ts`, and `describePost` in `core/decisions.ts`, are
   tuned with `vp run eval`. Any change to them re-asks every cached post.

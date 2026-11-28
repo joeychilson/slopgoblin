@@ -55,10 +55,9 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
 
   // Rows there when the panel opens arrive one after another; rows that turn up later, from a
   // new post or a filter, arrive at once.
-  const opening = useRef(true);
-  useEffect(() => {
-    opening.current = false;
-  }, []);
+  const [initialOrder, setInitialOrder] = useState(
+    () => new Map(hidden.slice(0, PAGE_SIZE).map(({ post }, i) => [post.id, Math.min(i, 10)])),
+  );
 
   // Let-through rows stay in their place until they fold away.
   const rows = useMemo(() => {
@@ -247,7 +246,20 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     setFilter(next);
     setLimit(PAGE_SIZE);
     setChoosing(false);
+    if (initialOrder.size) setInitialOrder(new Map());
     title.current?.focus();
+  }
+
+  function onKindKey(event: ReactKeyboardEvent, index: number) {
+    const to = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: kinds.length }[event.key];
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setChoosing(false);
+      title.current?.focus();
+    } else if (to !== undefined) {
+      event.preventDefault();
+      focusKind(picker.current, to);
+    }
   }
 
   if (!rows.length && !peek) return null;
@@ -274,7 +286,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
                   event.preventDefault();
                   setOpen(null);
                   setChoosing(true);
-                  requestAnimationFrame(() => focusKind(kindsId, 0));
+                  requestAnimationFrame(() => focusKind(picker.current, 0));
                 }
               }}
             >
@@ -298,17 +310,15 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
           inert={!choosing}
         >
           <div>
-            <ul
-              className="rows"
-              aria-label="Show"
-              onKeyDown={(event) =>
-                onKindsKey(event, kindsId, () => {
-                  setChoosing(false);
-                  title.current?.focus();
-                })
-              }
-            >
-              <Kind label="All" count={rows.length} on={!active} i={0} onPick={() => pick("")} />
+            <ul className="rows" aria-label="Show">
+              <Kind
+                label="All"
+                count={rows.length}
+                on={!active}
+                i={0}
+                onPick={() => pick("")}
+                onKeyDown={(event) => onKindKey(event, 0)}
+              />
               {kinds.map(([id, count], i) => (
                 <Kind
                   key={id}
@@ -317,6 +327,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
                   on={active === id}
                   i={i + 1}
                   onPick={() => pick(id)}
+                  onKeyDown={(event) => onKindKey(event, i + 1)}
                 />
               ))}
             </ul>
@@ -325,23 +336,15 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
       )}
 
       {visible.length > 0 ? (
-        <ul
-          className="list"
-          onKeyDown={(event) => {
-            if (event.key !== "Escape" || !open) return;
-            // Focus goes back to the post, not off the page with its closing actions.
-            setOpen(null);
-            focusRow(open);
-          }}
-        >
-          {visible.map((item, i) => {
+        <ul className="list">
+          {visible.map((item) => {
             const { id } = item.post;
             const settled = settling.get(id);
             return (
               <Item
                 key={id}
                 item={item}
-                order={opening.current ? Math.min(i, 10) : -1}
+                order={initialOrder.get(id)}
                 open={open === id}
                 settled={settled && !settled.undone && !settled.quiet ? settled.action : undefined}
                 leaving={Boolean(settled?.leaving)}
@@ -362,7 +365,14 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   );
 }
 
-function Kind(props: { label: string; count: number; on: boolean; i: number; onPick: () => void }) {
+function Kind(props: {
+  label: string;
+  count: number;
+  on: boolean;
+  i: number;
+  onPick: () => void;
+  onKeyDown: (event: ReactKeyboardEvent) => void;
+}) {
   return (
     <li>
       <button
@@ -371,6 +381,7 @@ function Kind(props: { label: string; count: number; on: boolean; i: number; onP
         aria-pressed={props.on}
         style={{ "--i": props.i }}
         onClick={props.onPick}
+        onKeyDown={props.onKeyDown}
       >
         <span className="row-text">
           <span className="row-title">{props.label}</span>
@@ -381,22 +392,9 @@ function Kind(props: { label: string; count: number; on: boolean; i: number; onP
   );
 }
 
-function focusKind(trayId: string, index: number) {
-  const kinds = document.querySelectorAll<HTMLElement>(`[id="${trayId}"] .row`);
-  if (kinds.length) kinds[(index + kinds.length) % kinds.length]!.focus();
-}
-
-function onKindsKey(event: ReactKeyboardEvent, trayId: string, close: () => void) {
-  const kinds = [...document.querySelectorAll<HTMLElement>(`[id="${trayId}"] .row`)];
-  const at = kinds.indexOf(document.activeElement as HTMLElement);
-  const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: kinds.length - 1 }[event.key];
-  if (event.key === "Escape") {
-    event.preventDefault();
-    close();
-  } else if (to !== undefined) {
-    event.preventDefault();
-    focusKind(trayId, to);
-  }
+function focusKind(container: HTMLElement | null, index: number) {
+  const rows = container?.querySelectorAll<HTMLElement>(".row");
+  if (rows?.length) rows[(index + rows.length) % rows.length]!.focus();
 }
 
 function Peek({ on }: { on: boolean }) {
@@ -418,7 +416,7 @@ function Peek({ on }: { on: boolean }) {
 
 function Item(props: {
   item: HiddenPost;
-  order: number;
+  order?: number;
   open: boolean;
   settled?: LetThrough;
   leaving: boolean;
@@ -429,8 +427,8 @@ function Item(props: {
   const { item, open, settled, leaving, onToggle } = props;
   const host = useHost();
   const { post, verdict } = item;
-  const [order] = useState(props.order);
   const row = useRef<HTMLLIElement>(null);
+  const openButton = useRef<HTMLButtonElement>(null);
   const isNsfw = verdict.category === "nsfw";
   const { label, midSentence, possibly } = reason(verdict);
   const name = displayName(post);
@@ -445,6 +443,14 @@ function Item(props: {
     return () => clearTimeout(timer);
   }, [open]);
 
+  function onEscape(event: ReactKeyboardEvent) {
+    if (event.key !== "Escape" || !open) return;
+    event.preventDefault();
+    // Focus goes back to the post, not off the page with its closing actions.
+    onToggle(false);
+    openButton.current?.focus();
+  }
+
   const classes = ["item", open && "is-open", settled && "is-settled", leaving && "is-leaving"]
     .filter(Boolean)
     .join(" ");
@@ -453,7 +459,7 @@ function Item(props: {
       ref={row}
       className={classes}
       data-id={post.id}
-      style={order >= 0 ? { "--order": order } : undefined}
+      style={props.order !== undefined ? { "--order": props.order } : undefined}
     >
       <div className="item-inner">
         {settled ? (
@@ -461,11 +467,13 @@ function Item(props: {
         ) : (
           <>
             <button
+              ref={openButton}
               type="button"
               className="item-open"
               aria-expanded={open}
               aria-controls={actionsId}
               onClick={() => onToggle(!open)}
+              onKeyDown={onEscape}
             >
               <Avatar post={post} nsfw={isNsfw} />
               <span className="item-body">
@@ -483,7 +491,12 @@ function Item(props: {
             <div className={open ? "unfold is-open" : "unfold"} id={actionsId} inert={!open}>
               <div>
                 <div className="tray">
-                  <button type="button" style={{ "--i": 0 }} onClick={() => host.showInFeed(post)}>
+                  <button
+                    type="button"
+                    style={{ "--i": 0 }}
+                    onClick={() => host.showInFeed(post)}
+                    onKeyDown={onEscape}
+                  >
                     <Icon d={ICONS.eye} size={16} />
                     <span>Show in feed</span>
                   </button>
@@ -493,6 +506,7 @@ function Item(props: {
                         type="button"
                         style={{ "--i": 1 }}
                         onClick={() => props.onLetThrough("not-slop")}
+                        onKeyDown={onEscape}
                       >
                         <Icon d={ICONS.check} size={16} />
                         <span>Not {midSentence}</span>
@@ -501,6 +515,7 @@ function Item(props: {
                         type="button"
                         style={{ "--i": 2 }}
                         onClick={() => props.onLetThrough("trust")}
+                        onKeyDown={onEscape}
                       >
                         <Icon d={ICONS.trust} size={16} />
                         <span>Always show {name}</span>

@@ -427,17 +427,13 @@
     margin: 0 -4px;
   }
 
-  /* Each row keeps the space under it, so the space grows and folds away with the row. */
+  /* Each row keeps the space under it, so the space grows in with the row. */
   .item {
     display: grid;
     grid-template-rows: 1fr;
     margin-bottom: 4px;
     animation: row-in 420ms var(--glide) both;
     animation-delay: calc(var(--order, 0) * 45ms);
-  }
-
-  .item.is-leaving {
-    animation: row-out 240ms var(--glide) forwards;
   }
 
   .item-inner {
@@ -455,16 +451,12 @@
     background: var(--well);
   }
 
-  .item-open,
-  .item-settled {
+  .item-open {
     display: grid;
     grid-template-columns: 32px minmax(0, 1fr);
     column-gap: 12px;
     width: 100%;
     padding: 10px 8px;
-  }
-
-  .item-open {
     border: 0;
     border-radius: 16px;
     background: none;
@@ -562,25 +554,27 @@
     font-style: italic;
   }
 
-  /* A row just let through keeps its face and name. Undo is where the reason was, and the text
-   says what happened, until the row folds away. */
-  .item-settled .item-body {
-    animation: fade 260ms var(--glide);
+  /* Sticky confirmation bar for the latest let-through; opaque so rows scroll cleanly behind it. */
+  .undo-bar {
+    position: sticky;
+    z-index: 2;
+    top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 4px 0 8px;
+    padding: 8px 8px 8px 14px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--sheet) 92%, var(--ink));
+    color: var(--ink-2);
+    font-size: 12px;
+    line-height: 16px;
+    animation: fade 220ms var(--glide);
   }
 
-  .item-settled .item-text {
-    color: var(--muted);
-  }
-
-  .item-undo {
-    padding: 0;
-    border: 0;
-    background: none;
-    cursor: pointer;
-  }
-
-  .item-undo:hover {
-    text-decoration: underline;
+  .undo-bar output {
+    min-width: 0;
   }
 
   /* Opens in place and pushes what's under it down: what can be done about a post, under its
@@ -1303,15 +1297,6 @@
     margin-bottom: 0;
     opacity: 0;
     transform: translateY(-6px);
-  }
-}
-
-@keyframes row-out {
-  to {
-    grid-template-rows: 0fr;
-    margin-bottom: 0;
-    opacity: 0;
-    transform: translateX(16px);
   }
 }
 

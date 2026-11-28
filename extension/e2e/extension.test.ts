@@ -368,31 +368,35 @@ describe("on X", { timeout: 30_000 }, () => {
     }
   });
 
-  it("lets a post through from the side panel, in the tab too, and undoes it in place", async () => {
+  it("lets a post through from the side panel, in the tab too, and undoes it", async () => {
     const row = '.item:has-text("Growth Guru")';
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
-    await poll(() => panel.innerText(`${row}.is-settled`)).toMatch(/won't be hidden again/);
-    await panel.click(`${row} .item-undo`);
+    await poll(() => panel.locator(row).count()).toBe(0);
+    await poll(() => panel.innerText(".undo-bar")).toMatch(/won't be hidden again/);
+    await panel.click(".undo-bar button");
     await shows(x, "slopper", "collapsed");
     await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
-    // Undoing from the post's bar in X immediately restores the settling row in the panel.
+    await poll(() => panel.locator(".undo-bar").count()).toBe(0);
+    // Undoing from the post's bar in X immediately dismisses the undo bar and restores the row.
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
-    await poll(() => panel.locator(`${row}.is-settled`).count()).toBe(1);
+    await poll(() => panel.locator(".undo-bar").count()).toBe(1);
     await click(x, "slopper", "[data-sg-action=undo]");
     await shows(x, "slopper", "revealed");
-    await poll(() => panel.locator(`${row}:not(.is-settled) .item-open`).count()).toBe(1);
+    await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
+    await poll(() => panel.locator(".undo-bar").count()).toBe(0);
     await click(x, "slopper", "[data-sg-action=hide]");
     await shows(x, "slopper", "collapsed");
-    // Let it through again: this time it folds away on its own, once the pointer is off it.
+    // Let it through again: the undo bar dismisses on its own once the pointer is off it.
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
     await panel.mouse.move(0, 0);
-    await poll(() => panel.innerText(".hidden")).not.toContain("Growth Guru");
+    await poll(() => panel.locator(".undo-bar").count()).toBe(0);
+    expect(await panel.innerText(".hidden")).not.toContain("Growth Guru");
   });
 
   it("shows one kind of hidden post, picked from the list's title", async () => {

@@ -64,8 +64,8 @@ function NotFound() {
       <p className="lede">
         The goblin couldn’t find that page. Check the address, or head back home.
       </p>
-      <div className="hero-cta">
-        <PillLink href="/" tone="ground" size="large">
+      <div className="cta">
+        <PillLink href="/" size="large">
           Go home
         </PillLink>
       </div>

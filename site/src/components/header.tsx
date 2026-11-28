@@ -3,7 +3,7 @@ import { GOBLIN_GLYPH } from "@slopgoblin/extension/core/glyphs.ts";
 import { PillLink } from "@/components/pill-link";
 import { site } from "@/lib/site";
 
-/** The green bar along the top, as in the side panel: the cream sheet scrolls up under it. */
+/** The green bar along the top. The page scrolls up under it. */
 export function Header() {
   return (
     <>
@@ -22,7 +22,7 @@ export function Header() {
             <a href={site.repo} className="plain-link masthead-github">
               GitHub
             </a>
-            <PillLink href={site.store} tone="ground" size="small">
+            <PillLink href={site.store} size="small">
               Add to Chrome
             </PillLink>
           </nav>

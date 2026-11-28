@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.3
+
+- **One Undo bar in the side panel.** After you let a post through, Undo waits at the top of the
+  hidden list. It stays while your pointer or keyboard is on it.
+- **Picking one kind of hidden post** uses Chrome's own menu on the list's title, drawn like the
+  panel's rows.
+- **Fewer paid requests.** A post you let through isn't sent to Google again when more of it
+  loads, such as a community note. When Chrome restarts the extension in the background, it no
+  longer retries a key Google rejected, or asks again before a rate limit is over.
+- **Keyboard focus stays in place** after Show, Hide, Not ragebait and the like, Undo, or
+  removing an Always show account, in the feed and the side panel.
+- **Always show accounts are easier to read**, with more room above them.
+- **No posts are checked again** after updating: nothing sent to Google changed.
+
 ## 0.3.2
 
 - **The side panel is rebuilt on React**, the same as slopgoblin.app. It looks and works the same.

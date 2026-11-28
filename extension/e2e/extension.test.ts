@@ -533,8 +533,11 @@ describe("on X", { timeout: 30_000 }, () => {
   });
 
   it("stops the rate-limit countdown timer once it expires", async () => {
-    const fresh = await m.ctx.newPage();
-    await fresh.addInitScript(() => {
+    await m.sw.evaluate(() =>
+      chrome.storage.session.set({ status: { kind: "rate-limited", until: Date.now() + 1200 } }),
+    );
+    // Counts the panel's running intervals.
+    const fresh = await openPanel(m.ctx, m.extension, () => {
       const active = new Set<number>();
       const origSet = window.setInterval;
       const origClear = window.clearInterval;
@@ -548,17 +551,8 @@ describe("on X", { timeout: 30_000 }, () => {
         return origClear(id);
       }) as typeof clearInterval;
       (window as unknown as { __intervals: () => number }).__intervals = () => active.size;
-      const query = chrome.tabs.query.bind(chrome.tabs);
-      chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>
-        info.active ? (await query({ url: "https://x.com/*" })).slice(0, 1) : query(info);
     });
     try {
-      await m.sw.evaluate(() =>
-        chrome.storage.session.set({
-          status: { kind: "rate-limited", until: Date.now() + 1200 },
-        }),
-      );
-      await fresh.goto(`chrome-extension://${m.extension}/sidepanel/index.html`);
       await poll(() => fresh.locator(".notice").count()).toBe(1);
       await poll(() => fresh.locator(".notice").count()).toBe(0);
       await expect

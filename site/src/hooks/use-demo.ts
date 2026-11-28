@@ -22,7 +22,7 @@ const START_MS = 900;
 const UNREAD: View = { mode: "shown" };
 
 /** What the reader has done to a post in the feed. */
-type Done = Pick<PostState, "revealed" | "letThrough">;
+type Done = Pick<PostState, "revealed" | "letThrough"> & { notSlop?: boolean };
 
 /** A post as the extension's feed keeps it. */
 const stateOf = (post: CheckedPost, done: Done | undefined): PostState => ({
@@ -39,7 +39,6 @@ const stateOf = (post: CheckedPost, done: Done | undefined): PostState => ({
 export function useDemo() {
   const [read, setRead] = useState(0);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [notSlop, setNotSlop] = useState<ReadonlySet<string>>(new Set());
   const [done, setDone] = useState<ReadonlyMap<string, Done>>(new Map());
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const started = useRef(false);
@@ -63,8 +62,8 @@ export function useDemo() {
   }, []);
 
   const checked = useMemo(
-    () => posts.slice(0, read).map((post) => ({ ...post, notSlop: notSlop.has(post.id) })),
-    [read, notSlop],
+    () => posts.slice(0, read).map((post) => ({ ...post, notSlop: done.get(post.id)?.notSlop })),
+    [read, done],
   );
   const hidden = useMemo(() => hiddenAmong(checked, settings), [checked, settings]);
   const views = useMemo(() => {
@@ -81,25 +80,21 @@ export function useDemo() {
     (patch: (s: Settings) => Partial<Settings>) => setSettings((s) => ({ ...s, ...patch(s) })),
     [],
   );
-  const markNotSlop = useCallback((id: string, on: boolean) => {
-    setNotSlop((set) => {
-      const next = new Set(set);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }, []);
 
   const act = useCallback(
     (post: CheckedPost, action: BarAction) => {
-      const next = step(stateOf(post, done.get(post.id)), action);
+      const was = done.get(post.id);
+      const next = step(stateOf(post, was), action);
       setDone((all) =>
-        new Map(all).set(post.id, { revealed: next.revealed, letThrough: next.letThrough }),
+        new Map(all).set(post.id, {
+          revealed: next.revealed,
+          letThrough: next.letThrough,
+          notSlop: next.notSlop ?? was?.notSlop,
+        }),
       );
       if (next.trust !== undefined) update(trusting(post.handle, next.trust));
-      if (next.notSlop !== undefined) markNotSlop(post.id, next.notSlop);
     },
-    [done, update, markNotSlop],
+    [done, update],
   );
 
   const host = useMemo<Host>(
@@ -107,11 +102,14 @@ export function useDemo() {
       updateSettings: update,
       setNotSlop: (id, on) => {
         const isHidden = hidden.some(({ post }) => post.id === id);
-        markNotSlop(id, on);
         setDone((all) => {
           const was = all.get(id);
           const letThrough = letThroughFromPanel(was?.letThrough, on, isHidden);
-          return new Map(all).set(id, { revealed: was?.revealed ?? false, letThrough });
+          return new Map(all).set(id, {
+            revealed: was?.revealed ?? false,
+            letThrough,
+            notSlop: on,
+          });
         });
       },
       // As in X: the post opens where it is, with its line, and the feed scrolls to it.
@@ -122,7 +120,7 @@ export function useDemo() {
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
       },
     }),
-    [update, markNotSlop, hidden, act],
+    [update, hidden, act],
   );
 
   return {

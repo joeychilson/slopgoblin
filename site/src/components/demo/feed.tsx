@@ -93,9 +93,7 @@ function Context(props: { name: string; view: View; onAction: (action: BarAction
               <Action label={`Always show ${name}`} onClick={() => onAction("trust")} />
             </>
           )}
-          {view.mode === "revealed" && !view.peek && (
-            <Action label="Hide" primary onClick={() => onAction("hide")} />
-          )}
+          {!view.peek && <Action label="Hide" primary onClick={() => onAction("hide")} />}
         </>
       )}
     </div>

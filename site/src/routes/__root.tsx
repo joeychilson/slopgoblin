@@ -42,8 +42,8 @@ function Document({ children }: { children: ReactNode }) {
       <head>
         <HeadContent />
         {/* Here, not in `head`: HeadContent keeps only one meta tag of each name. */}
-        <meta name="theme-color" content="#547b1d" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#1f2d11" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#3d5c12" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#10180a" media="(prefers-color-scheme: dark)" />
       </head>
       <body>
         <div className="page">

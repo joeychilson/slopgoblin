@@ -335,17 +335,31 @@
     }
   }
 
-  /* With two or more kinds hidden, the title is what picks which to show. */
+  /* With two or more kinds hidden, a native select sits over the title to pick which to show. */
   .list-title {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 4px;
     max-width: 100%;
-    padding: 0;
-    border: 0;
-    background: none;
-    letter-spacing: inherit;
+    border-radius: 6px;
+  }
+
+  .list-title select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    background: var(--sheet);
+    color: var(--ink);
+    font: 13px/18px var(--body);
     cursor: pointer;
+  }
+
+  .list-title:has(:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .list-title-text {
@@ -359,67 +373,11 @@
   .list-title .icon {
     flex: none;
     color: var(--muted);
-    transition:
-      color 180ms,
-      transform 320ms var(--spring);
+    transition: color 180ms;
   }
 
   .list-title:hover .icon {
     color: var(--ink);
-  }
-
-  .list-title[aria-expanded="true"] .icon {
-    transform: rotate(180deg);
-  }
-
-  /* The kinds, as rows like "What to hide" in Settings. The one shown is filled, like an open
-   post, and each count ends where a post's reason does. The box that clips while they open is
-   as wide as the rows, so their rounded ends show. */
-  .kinds {
-    margin: 0 -4px;
-  }
-
-  .kinds .rows {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 0;
-    padding-bottom: 8px;
-  }
-
-  .kinds .row {
-    width: 100%;
-    padding: 7px 8px;
-    border: 0;
-    background: none;
-    text-align: left;
-  }
-
-  .kinds .row-title {
-    color: var(--ink-2);
-    font-weight: 500;
-  }
-
-  .kinds .row[aria-pressed="true"] {
-    background: var(--well);
-  }
-
-  .kinds .row-count {
-    color: var(--muted);
-  }
-
-  .kinds .row[aria-pressed="true"] .row-title {
-    color: var(--ink);
-    font-weight: 600;
-  }
-
-  .kinds .row:focus-visible {
-    outline-offset: -2px;
-  }
-
-  .kinds.is-open .row {
-    animation: drop 280ms var(--glide) both;
-    animation-delay: calc(40ms + var(--i) * 25ms);
   }
 
   /* Rows start 12px in, so what's in them starts at 20 like everything else. */
@@ -577,8 +535,7 @@
     min-width: 0;
   }
 
-  /* Opens in place and pushes what's under it down: what can be done about a post, under its
-   text, and the kinds, under the title. */
+  /* Opens in place and pushes what's under it down: what can be done about a post, under its text. */
   .unfold {
     display: grid;
     grid-template-rows: 0fr;

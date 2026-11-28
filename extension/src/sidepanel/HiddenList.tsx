@@ -35,13 +35,10 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   const host = useHost();
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState<CategoryId | "">("");
-  const [choosing, setChoosing] = useState(false);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [recent, setRecent] = useState<Recent | null>(null);
   const [prevHidden, setPrevHidden] = useState(hidden);
-  const title = useRef<HTMLButtonElement>(null);
-  const picker = useRef<HTMLDivElement>(null);
-  const kindsId = useId();
+  const filterSelect = useRef<HTMLSelectElement>(null);
 
   // Clear the undo bar as soon as the let-through is undone elsewhere (in X or Settings).
   if (hidden !== prevHidden) {
@@ -82,19 +79,6 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
 
   // A kind that has no posts left can't stay chosen, and one kind alone has nothing to choose from.
   if (filter && !active) setFilter("");
-  if (choosing && !canFilter) setChoosing(false);
-
-  // The kinds close on a click anywhere else, like a menu.
-  useEffect(() => {
-    if (!choosing) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (title.current?.contains(target) || picker.current?.contains(target)) return;
-      setChoosing(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [choosing]);
 
   // Older posts load as the reader scrolls near the end, without a button. Rows grow in from
   // nothing as they arrive, so it waits for a scroll rather than watching where the end is.
@@ -121,7 +105,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   function focusFallback() {
     (
       document.querySelector<HTMLElement>(".list .item-open") ??
-      title.current ??
+      filterSelect.current ??
       document.querySelector<HTMLElement>(".peek")
     )?.focus({ preventScroll: true });
   }
@@ -139,104 +123,45 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     if (hadFocus) focusFallback();
   }
 
-  /** One thing open at a time: the kinds, or a post. */
-  function toggleKinds() {
-    if (!choosing) setOpen(null);
-    setChoosing(!choosing);
-  }
-
-  function pick(next: CategoryId | "") {
-    setFilter(next);
-    setLimit(PAGE_SIZE);
-    setChoosing(false);
-    if (initialOrder.size) setInitialOrder(new Map());
-    title.current?.focus();
-  }
-
-  function onKindKey(event: ReactKeyboardEvent, index: number) {
-    const to = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: kinds.length }[event.key];
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setChoosing(false);
-      title.current?.focus();
-    } else if (to !== undefined) {
-      event.preventDefault();
-      focusKind(picker.current, to);
-    }
-  }
-
   if (!hidden.length && !peek && !recent) return null;
 
   const heading = active ? CATEGORY[active].label : "Hidden posts";
   return (
-    <section className="hidden" aria-labelledby="hidden-title">
+    <section className="hidden" aria-label="Hidden posts">
       <div className="list-head">
-        <h2 id="hidden-title">
+        <h2>
           {canFilter ? (
-            <button
-              ref={title}
-              type="button"
-              className="list-title"
-              aria-expanded={choosing}
-              aria-controls={kindsId}
-              title="Show one kind"
-              onClick={toggleKinds}
-              onKeyDown={(event) => {
-                if (event.key === "Escape" && choosing) {
-                  event.preventDefault();
-                  setChoosing(false);
-                } else if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  setOpen(null);
-                  setChoosing(true);
-                  requestAnimationFrame(() => focusKind(picker.current, 0));
-                }
-              }}
-            >
-              <span key={heading} className="list-title-text">
+            <span className="list-title">
+              <span key={heading} className="list-title-text" aria-hidden="true">
                 {heading}
               </span>
               <Icon d={ICONS.chevron} size={16} weight={2.4} />
-            </button>
+              <select
+                ref={filterSelect}
+                aria-label="Filter hidden posts by kind"
+                title="Show one kind"
+                value={active}
+                onChange={(event) => {
+                  setFilter(event.currentTarget.value as CategoryId | "");
+                  setLimit(PAGE_SIZE);
+                  setOpen(null);
+                  if (initialOrder.size) setInitialOrder(new Map());
+                }}
+              >
+                <option value="">All ({hidden.length})</option>
+                {kinds.map(([id, count]) => (
+                  <option key={id} value={id}>
+                    {CATEGORY[id].label} ({count})
+                  </option>
+                ))}
+              </select>
+            </span>
           ) : (
             heading
           )}
         </h2>
         <Peek on={peek} />
       </div>
-
-      {canFilter && (
-        <div
-          ref={picker}
-          className={choosing ? "unfold kinds is-open" : "unfold kinds"}
-          id={kindsId}
-          inert={!choosing}
-        >
-          <div>
-            <ul className="rows" aria-label="Show">
-              <Kind
-                label="All"
-                count={hidden.length}
-                on={!active}
-                i={0}
-                onPick={() => pick("")}
-                onKeyDown={(event) => onKindKey(event, 0)}
-              />
-              {kinds.map(([id, count], i) => (
-                <Kind
-                  key={id}
-                  label={CATEGORY[id].label}
-                  count={count}
-                  on={active === id}
-                  i={i + 1}
-                  onPick={() => pick(id)}
-                  onKeyDown={(event) => onKindKey(event, i + 1)}
-                />
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
 
       {recent && (
         <UndoBar
@@ -257,10 +182,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
                 item={item}
                 order={initialOrder.get(id)}
                 open={open === id}
-                onToggle={(next) => {
-                  if (next) setChoosing(false);
-                  setOpen(next ? id : null);
-                }}
+                onToggle={(next) => setOpen(next ? id : null)}
                 onLetThrough={(action) => letThrough(item, action)}
               />
             );
@@ -317,38 +239,6 @@ function UndoBar(props: {
       </button>
     </div>
   );
-}
-
-function Kind(props: {
-  label: string;
-  count: number;
-  on: boolean;
-  i: number;
-  onPick: () => void;
-  onKeyDown: (event: ReactKeyboardEvent) => void;
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        className="row"
-        aria-pressed={props.on}
-        style={{ "--i": props.i }}
-        onClick={props.onPick}
-        onKeyDown={props.onKeyDown}
-      >
-        <span className="row-text">
-          <span className="row-title">{props.label}</span>
-        </span>
-        <span className="row-count">{props.count}</span>
-      </button>
-    </li>
-  );
-}
-
-function focusKind(container: HTMLElement | null, index: number) {
-  const rows = container?.querySelectorAll<HTMLElement>(".row");
-  if (rows?.length) rows[(index + rows.length) % rows.length]!.focus();
 }
 
 function Peek({ on }: { on: boolean }) {

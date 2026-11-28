@@ -400,15 +400,13 @@ describe("on X", { timeout: 30_000 }, () => {
   });
 
   it("shows one kind of hidden post, picked from the list's title", async () => {
-    await panel.click(".list-title");
-    await panel.click('.kinds .row:has-text("Ragebait")');
+    await panel.selectOption(".list-title select", "ragebait");
     await poll(() => panel.locator(".list .item").count()).toBe(1);
     expect(await panel.innerText(".list")).toContain("Rage Farm");
-    expect(await panel.innerText(".list-title")).toBe("Ragebait");
-    await panel.click(".list-title");
-    await panel.click('.kinds .row:has-text("All")');
+    expect(await panel.innerText(".list-title-text")).toBe("Ragebait");
+    await panel.selectOption(".list-title select", "");
     await poll(() => panel.locator(".list .item").count()).toBeGreaterThan(1);
-    expect(await panel.innerText(".list-title")).toBe("Hidden posts");
+    expect(await panel.innerText(".list-title-text")).toBe("Hidden posts");
   });
 
   it("re-checks a post when a lazy-loaded image arrives later", async () => {

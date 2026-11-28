@@ -41,16 +41,22 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   const filterSelect = useRef<HTMLSelectElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const restoring = useRef<string | null>(null);
+  // With nothing hidden and Peek off, the list goes with the Undo bar.
+  const listStays = hidden.length > 0 || peek;
 
-  // Focus stays with the post Undo brought back, once the list has it again.
+  // Focus stays with the post Undo brought back, once the list has it again. Undo always changes
+  // the list, so this settles on that change: a post this strictness or kind doesn't show sends
+  // focus where the bar closing would, and can't take it later when it does show.
   useEffect(() => {
     const id = restoring.current;
-    if (!id || !hidden.some(({ post }) => post.id === id)) return;
+    if (!id) return;
     restoring.current = null;
-    list.current
-      ?.querySelector<HTMLElement>(`.item[data-id="${CSS.escape(id)}"] .item-open`)
-      ?.focus();
-  }, [hidden]);
+    const row = list.current?.querySelector<HTMLElement>(
+      `.item[data-id="${CSS.escape(id)}"] .item-open`,
+    );
+    if (row) row.focus();
+    else focusWhatStays(list.current, filterSelect.current, listStays);
+  }, [hidden, listStays]);
 
   // Rows there when the panel opens arrive one after another. Once the list changes, rows arrive
   // at once: a new post, a filter, or a post let through and brought back.
@@ -134,16 +140,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
 
   function dismissRecent(hadFocus: boolean) {
     setRecent(null);
-    if (!hadFocus) return;
-    // With nothing hidden and Peek off, the list goes with the bar, so focus goes to what stays.
-    const listStays = hidden.length > 0 || peek;
-    (
-      (listStays &&
-        (list.current?.querySelector<HTMLElement>(".item-open") ??
-          filterSelect.current ??
-          document.querySelector<HTMLElement>(".peek"))) ||
-      document.querySelector<HTMLElement>(".summary input:checked")
-    )?.focus({ preventScroll: true });
+    if (hadFocus) focusWhatStays(list.current, filterSelect.current, listStays);
   }
 
   if (!hidden.length && !peek && !recent) return null;
@@ -219,6 +216,17 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
       )}
     </section>
   );
+}
+
+/** Where focus goes when the Undo bar closes with no post of its own to go to. */
+function focusWhatStays(list: HTMLElement | null, filter: HTMLElement | null, listStays: boolean) {
+  (
+    (listStays &&
+      (list?.querySelector<HTMLElement>(".item-open") ??
+        filter ??
+        document.querySelector<HTMLElement>(".peek"))) ||
+    document.querySelector<HTMLElement>(".summary input:checked")
+  )?.focus({ preventScroll: true });
 }
 
 /**

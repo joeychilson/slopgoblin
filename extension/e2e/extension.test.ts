@@ -926,6 +926,35 @@ describe("keyboard focus", { timeout: 60_000 }, () => {
       await m.ctx.close();
     }
   });
+
+  it("keeps focus on Undo when the post won't show, and doesn't take it when it does later", async () => {
+    const m = await launch([
+      { id: "628", handle: "slopper", name: "Growth Guru", text: "Hooks [ai_slop .8]" },
+      { id: "629", handle: "edgy", name: "Edge Case", text: "Maybe [ai_slop .55]" },
+    ]);
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await shows(x, "slopper", "collapsed");
+      const panel = await openPanel(m.ctx, m.extension);
+      const strictness = (name: string) => panel.click(`.summary label:has-text("${name}")`);
+      const edge = '.item:has-text("Edge Case")';
+      await strictness("Strict");
+      await panel.click(`${edge} .item-open`);
+      await panel.click(`${edge} button:has-text("Not AI slop")`);
+      await poll(() => panel.locator(".undo-bar").count()).toBe(1);
+      // Balanced doesn't hide the post, so Undo has no row to go to.
+      await strictness("Balanced");
+      await panel.click(".undo-bar button");
+      await poll(() => panel.locator(".item-open:focus").count()).toBe(1);
+      await strictness("Strict");
+      await poll(() => panel.locator(edge).count()).toBe(1);
+      await sleep(300);
+      expect(await panel.locator(".summary input:checked:focus").count()).toBe(1);
+    } finally {
+      await m.ctx.close();
+    }
+  });
 });
 
 describe("with a key Google rejects", { timeout: 60_000 }, () => {

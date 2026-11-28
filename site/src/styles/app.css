@@ -270,6 +270,8 @@ main {
   grid-template-columns: minmax(0, 560px);
   gap: 32px;
   justify-content: center;
+  align-items: start;
+  margin-top: 56px;
 }
 
 .stage-note {
@@ -304,14 +306,12 @@ main {
   padding-bottom: 96px;
 }
 
-/* The feed, with the side panel's goblin hanging on to its top edge at twice the size: its head
-   behind the feed, its hands in front. */
+/* The feed, as X shows it */
 
 .feed-edge {
   --fade: 80px;
   position: relative;
   isolation: isolate;
-  margin-top: 84px;
 }
 
 /* Fades out the feed's bottom edge, which stays put while the feed scrolls under it. */
@@ -324,13 +324,6 @@ main {
   border-radius: 0 0 28px 28px;
   background: linear-gradient(to top, var(--feed), transparent);
   pointer-events: none;
-}
-
-.feed-goblin {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  zoom: 1.6;
 }
 
 .feed {
@@ -709,14 +702,6 @@ main {
     font-size: 21px;
   }
 
-  .feed-edge {
-    margin-top: 106px;
-  }
-
-  .feed-goblin {
-    zoom: 2;
-  }
-
   .footer-row {
     flex-direction: row;
     align-items: baseline;
@@ -733,10 +718,8 @@ main {
     padding-top: 16px;
   }
 
-  /* The panel's top lines up with the feed's, under the goblin hanging on to it. */
   .stage {
     grid-template-columns: minmax(0, 560px) 360px;
-    align-items: end;
   }
 
   .feed,

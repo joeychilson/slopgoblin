@@ -733,6 +733,28 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
     }
   });
 
+  it("asks again when a post's community note grows, not when X reads it shorter", async () => {
+    const post = { id: "622", handle: "noted", name: "Noted", text: "Real photo" };
+    const m = await launch([{ ...post, note: "Made with AI. The photo is from 2019." }]);
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(1);
+      const reread = async (note: string) => {
+        await x.locator(cellOf("noted")).evaluate((el) => el.remove());
+        await append(x, cell({ ...post, note }));
+      };
+      await reread("Made with AI.");
+      await sleep(1500);
+      expect(m.sent).toHaveLength(1);
+      await reread("Made with AI. The photo is from a 2019 film shoot.");
+      await poll(() => m.sent.length).toBe(2);
+      expect(m.sent[1]).toContain("2019 film shoot");
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
   it("judges a post whose text arrives after it first mounted empty", async () => {
     const empty: MockPost = {
       id: "611",

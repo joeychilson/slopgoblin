@@ -34,18 +34,21 @@ it to improve its products.
 - **Your API key**, in the extension's local storage. It's sent only to Google.
 - **Your settings**, including the handles you've marked "Always show", in Chrome's synced
   storage. If you use Chrome Sync, Chrome syncs them to your other devices.
-- **Answers**: for each post judged, its ID and the model's scores, without its text, so a
-  post isn't sent twice. They're deleted 30 days after the post was last seen.
-- **The side panel's list**: name, handle, avatar address and the first 600 characters of
-  each post checked since Chrome started. It's kept in memory and cleared when Chrome quits.
+- **Answers**: for each post judged, its ID, the model's scores and whether you let it
+  through, without its text, so a post isn't sent twice. They're deleted 30 days after the
+  post was last seen.
+- **The side panel's list**: for each post checked since Chrome started, its address, name,
+  handle, avatar address and first 600 characters, the model's scores, X's labels on it,
+  whether you follow its author and whether you let it through. It's kept in memory and
+  cleared when Chrome quits.
 - **This month's usage**: how many posts were checked and how many tokens that took.
 - **X's theme** (light, dim or dark), so the side panel can match it.
 
 To read whether you follow a post's author, and which posts X labels as a paid partnership or
 "Made with AI", a script in X's page reads the data X loads for its own use. It passes on only
 handles and whether you follow each, and the IDs of labeled posts with their labels. The
-content script keeps them in memory until the tab closes. Nothing else from that data is read
-or kept.
+content script keeps them in memory until the tab closes, and the side panel's list keeps
+them for the posts it lists. Nothing else from that data is read or kept.
 
 Removing the extension deletes everything it stored.
 

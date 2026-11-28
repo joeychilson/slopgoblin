@@ -52,9 +52,16 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
       ?.focus();
   }, [hidden]);
 
-  // Clear the undo bar as soon as the let-through is undone elsewhere (in X or Settings).
+  // Rows there when the panel opens arrive one after another. Once the list changes, rows arrive
+  // at once: a new post, a filter, or a post let through and brought back.
+  const [initialOrder, setInitialOrder] = useState(
+    () => new Map(hidden.slice(0, PAGE_SIZE).map(({ post }, i) => [post.id, Math.min(i, 10)])),
+  );
+
   if (hidden !== prevHidden) {
     setPrevHidden(hidden);
+    if (initialOrder.size) setInitialOrder(new Map());
+    // Clear the undo bar as soon as the let-through is undone from the post's bar in the feed.
     if (recent) {
       const listed =
         recent.action === "not-slop"
@@ -64,12 +71,6 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
       else if (listed && recent.gone) setRecent(null);
     }
   }
-
-  // Rows there when the panel opens arrive one after another; rows that turn up later, from a
-  // new post or a filter, arrive at once.
-  const [initialOrder, setInitialOrder] = useState(
-    () => new Map(hidden.slice(0, PAGE_SIZE).map(({ post }, i) => [post.id, Math.min(i, 10)])),
-  );
 
   // In the order Settings lists them, so they stay put as counts change.
   const kinds = useMemo(() => {
@@ -105,34 +106,44 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     return () => removeEventListener("scroll", onScroll);
   }, [loaded, remaining]);
 
-  function letThrough(item: HiddenPost, action: LetThrough) {
-    const { id } = item.post;
-    const handle = item.post.handle.toLowerCase();
-    if (action === "not-slop") host.setNotSlop(id, true);
-    else host.updateSettings(trusting(handle, true));
-    setOpen(null);
-    setRecent({ id, handle, name: displayName(item.post), action });
+  /** Lets the post, or everything by its author, through; or takes that back. */
+  function setLetThrough({ id, handle, action }: Recent, on: boolean) {
+    if (action === "not-slop") host.setNotSlop(id, on);
+    else host.updateSettings(trusting(handle, on));
   }
 
-  function focusFallback() {
-    (
-      document.querySelector<HTMLElement>(".list .item-open") ??
-      filterSelect.current ??
-      document.querySelector<HTMLElement>(".peek")
-    )?.focus({ preventScroll: true });
+  function letThrough(item: HiddenPost, action: LetThrough) {
+    const { post } = item;
+    const next = {
+      id: post.id,
+      handle: post.handle.toLowerCase(),
+      name: displayName(post),
+      action,
+    };
+    setLetThrough(next, true);
+    setOpen(null);
+    setRecent(next);
   }
 
   function undoRecent() {
     if (!recent) return;
-    if (recent.action === "not-slop") host.setNotSlop(recent.id, false);
-    else host.updateSettings(trusting(recent.handle, false));
+    setLetThrough(recent, false);
     setRecent(null);
     restoring.current = recent.id;
   }
 
   function dismissRecent(hadFocus: boolean) {
     setRecent(null);
-    if (hadFocus) focusFallback();
+    if (!hadFocus) return;
+    // With nothing hidden and Peek off, the list goes with the bar, so focus goes to what stays.
+    const listStays = hidden.length > 0 || peek;
+    (
+      (listStays &&
+        (list.current?.querySelector<HTMLElement>(".item-open") ??
+          filterSelect.current ??
+          document.querySelector<HTMLElement>(".peek"))) ||
+      document.querySelector<HTMLElement>(".summary input:checked")
+    )?.focus({ preventScroll: true });
   }
 
   if (!hidden.length && !peek && !recent) return null;
@@ -247,8 +258,8 @@ function UndoBar(props: {
     button.current?.focus({ preventScroll: true });
     let timer: ReturnType<typeof setTimeout>;
     const check = () => {
-      // Not from under a pointer that may be on its way to Undo.
-      if (bar.current?.matches(":hover")) {
+      // Not from under a pointer that may be on its way to Undo, or while keyboard focus is on it.
+      if (bar.current?.matches(":hover, :has(:focus-visible)")) {
         timer = setTimeout(check, 1000);
         return;
       }

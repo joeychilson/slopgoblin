@@ -379,8 +379,12 @@ describe("on X", { timeout: 30_000 }, () => {
     await shows(x, "slopper", "collapsed");
     await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
     await poll(() => panel.locator(".undo-bar").count()).toBe(0);
-    // Focus goes to the post Undo brought back.
+    // Focus goes to the post Undo brought back, which arrives at once, not with the delay it had
+    // when the panel opened.
     await poll(() => panel.locator(`${row} .item-open:focus`).count()).toBe(1);
+    expect(await panel.locator(row).evaluate((el) => getComputedStyle(el).animationDelay)).toBe(
+      "0s",
+    );
     // Undoing from the post's bar in X immediately dismisses the undo bar and restores the row.
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
@@ -399,6 +403,17 @@ describe("on X", { timeout: 30_000 }, () => {
     await panel.mouse.move(0, 0);
     await poll(() => panel.locator(".undo-bar").count()).toBe(0);
     expect(await panel.innerText(".hidden")).not.toContain("Growth Guru");
+    // From the keyboard, the bar stays while focus is on it.
+    const rage = '.item:has-text("Rage Farm")';
+    await panel.click(`${rage} .item-open`);
+    await panel.focus(`${rage} button:has-text("Not ragebait")`);
+    await panel.keyboard.press("Enter");
+    await poll(() => panel.locator(".undo-bar button:focus").count()).toBe(1);
+    await sleep(6000);
+    expect(await panel.locator(".undo-bar").count()).toBe(1);
+    await panel.keyboard.press("Enter");
+    await poll(() => panel.locator(`${rage} .item-open:focus`).count()).toBe(1);
+    await shows(x, "rager", "collapsed");
   });
 
   it("shows one kind of hidden post, picked from the list's title", async () => {
@@ -843,6 +858,27 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
       expect(m.sent.slice(4).map(handleIn)).toEqual(["below1", "below2"]);
     } finally {
       for (const release of Object.values(releases)) release();
+      await m.ctx.close();
+    }
+  });
+});
+
+describe("side panel focus", { timeout: 60_000 }, () => {
+  it("stays on the page when the Undo bar closes with nothing left hidden", async () => {
+    const post = { id: "627", handle: "slopper", name: "Growth Guru", text: "Hooks [ai_slop .8]" };
+    const m = await launch([post]);
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await shows(x, "slopper", "collapsed");
+      const panel = await openPanel(m.ctx, m.extension);
+      await panel.click(".item-open");
+      await panel.click('button:has-text("Not AI slop")');
+      await poll(() => panel.locator(".undo-bar").count()).toBe(1);
+      await panel.mouse.move(0, 0);
+      await poll(() => panel.locator(".undo-bar").count()).toBe(0);
+      expect(await panel.locator(".summary input:checked:focus").count()).toBe(1);
+    } finally {
       await m.ctx.close();
     }
   });

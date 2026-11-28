@@ -1,8 +1,13 @@
-import type { BarAction, View } from "@slopgoblin/extension/content/view.ts";
+import {
+  lineActions,
+  type BarAction,
+  type LineView,
+  type View,
+} from "@slopgoblin/extension/content/view.ts";
 import { GOBLIN_GLYPH } from "@slopgoblin/extension/core/glyphs.ts";
 import { letThroughNote, reason, type Verdict } from "@slopgoblin/extension/core/policy.ts";
 import { displayName } from "@slopgoblin/extension/core/post.ts";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Fold } from "@/components/fold";
 import type { DemoPost } from "@/lib/demo";
@@ -16,15 +21,30 @@ export function FeedPost(props: {
   view: View;
   onAction: (action: BarAction) => void;
 }) {
-  const { post, view, onAction } = props;
+  const { post, view } = props;
   const name = displayName(post);
   // A bar or a line folding away keeps its words until it's gone.
   const [bar, setBar] = useState(view);
   const [line, setLine] = useState(view);
   if (view.mode === "collapsed" && view !== bar) setBar(view);
   if ((view.mode === "revealed" || view.mode === "confirmed") && view !== line) setLine(view);
+
+  // As in X, focus on a button that goes moves to the new bar's last one: Show, Hide or Undo.
+  const item = useRef<HTMLLIElement>(null);
+  const hadFocus = useRef(false);
+  const onAction = (action: BarAction) => {
+    hadFocus.current = Boolean(item.current?.contains(document.activeElement));
+    props.onAction(action);
+  };
+  useEffect(() => {
+    if (!hadFocus.current) return;
+    hadFocus.current = false;
+    const buttons = item.current?.querySelectorAll<HTMLElement>("button") ?? [];
+    [...buttons].findLast((button) => !button.closest("[inert]"))?.focus();
+  }, [view]);
+
   return (
-    <li id={`post-${post.id}`} className="feed-post">
+    <li ref={item} id={`post-${post.id}`} className="feed-post">
       <Fold open={view.mode === "collapsed"}>
         {bar.mode === "collapsed" && (
           <button type="button" className="bar" onClick={() => onAction("reveal")}>
@@ -40,7 +60,9 @@ export function FeedPost(props: {
       </Fold>
       <Fold open={view.mode !== "collapsed" && view.mode !== "removed"}>
         <Fold open={view.mode === "revealed" || view.mode === "confirmed"}>
-          <Context name={name} view={line} onAction={onAction} />
+          {(line.mode === "revealed" || line.mode === "confirmed") && (
+            <Context name={name} view={line} onAction={onAction} />
+          )}
         </Fold>
         <Body post={post} name={name} />
       </Fold>
@@ -64,9 +86,9 @@ function Why({ verdict }: { verdict: Verdict }) {
  * The line above a post that's showing anyway: a small goblin lined up with the avatar, the words,
  * then what can be done about it.
  */
-function Context(props: { name: string; view: View; onAction: (action: BarAction) => void }) {
+function Context(props: { name: string; view: LineView; onAction: (action: BarAction) => void }) {
   const { name, view, onAction } = props;
-  if (view.mode !== "revealed" && view.mode !== "confirmed") return null;
+  const { more, main } = lineActions(view);
   return (
     <div className="context">
       <span className="context-what">
@@ -79,25 +101,10 @@ function Context(props: { name: string; view: View; onAction: (action: BarAction
           <Why verdict={view.verdict} />
         )}
       </span>
-      {view.mode === "confirmed" ? (
-        <Action label="Undo" primary onClick={() => onAction("undo")} />
-      ) : (
-        <>
-          {/* There's no arguing with X's own label. */}
-          {!view.verdict.labeled && (
-            <>
-              <Action
-                label={`Not ${reason(view.verdict).midSentence}`}
-                onClick={() => onAction("not-slop")}
-              />
-              <Action label={`Always show ${name}`} onClick={() => onAction("trust")} />
-            </>
-          )}
-          {view.mode === "revealed" && !view.peek && (
-            <Action label="Hide" primary onClick={() => onAction("hide")} />
-          )}
-        </>
-      )}
+      {more.map(({ action, label }) => (
+        <Action key={action} label={label} onClick={() => onAction(action)} />
+      ))}
+      {main && <Action label={main.label} primary onClick={() => onAction(main.action)} />}
     </div>
   );
 }

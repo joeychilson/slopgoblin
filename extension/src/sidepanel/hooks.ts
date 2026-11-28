@@ -1,29 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { CHECKED_PREFIX, type CheckedPost } from "../core/checked.ts";
+import type { CheckedPost } from "../core/checked.ts";
 import type { RuntimeMessage, TabMessage, TabState } from "../core/messages.ts";
-import { loadSettings, updateSettings, watchSettings, type Settings } from "../core/settings.ts";
+import { loadSettings, updateSettings, watchSettings } from "../core/settings.ts";
 import { store, thisMonth, type Stored } from "../core/storage.ts";
 import type { Host } from "./host.ts";
 
-export function useSettings() {
-  const [settings, setSettings] = useState<Settings>();
-  useEffect(() => {
-    void loadSettings().then(setSettings);
-    return watchSettings(setSettings);
-  }, []);
-  return settings;
-}
+const SETTINGS = { get: loadSettings, watch: watchSettings };
+
+export const useSettings = () => useStored(SETTINGS);
 
 /** A stored value, kept live: `undefined` while it loads, `null` when there's none. */
-function useStored<T>(item: Stored<T>): T | null | undefined {
+function useStored<T>(item: Pick<Stored<T>, "get" | "watch">): T | null | undefined {
   const [value, setValue] = useState<T | null>();
   useEffect(() => {
-    let changed = false;
-    void item.get().then((saved) => changed || setValue(saved ?? null));
-    return item.watch((next) => {
-      changed = true;
+    let settled = false;
+    void item.get().then((saved) => settled || setValue(saved ?? null));
+    const unwatch = item.watch((next) => {
+      settled = true;
       setValue(next ?? null);
     });
+    return () => {
+      settled = true;
+      unwatch();
+    };
   }, [item]);
   return value;
 }
@@ -46,31 +45,29 @@ export function useChecked() {
     /** Posts added or dropped while the list loaded: what it read of them is out of date. */
     const changed = new Set<string>();
     let loaded = false;
-    const publish = () => loaded && setChecked([...posts.values()].sort((a, b) => b.at - a.at));
+    let alive = true;
+    const publish = () =>
+      alive && loaded && setChecked([...posts.values()].sort((a, b) => b.at - a.at));
 
-    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area !== "session") return;
-      let touched = false;
-      for (const [key, { newValue }] of Object.entries(changes)) {
-        if (!key.startsWith(CHECKED_PREFIX)) continue;
-        touched = true;
-        if (!loaded) changed.add(key);
-        if (newValue) posts.set(key, newValue as CheckedPost);
-        else posts.delete(key);
+    const unwatch = store.checked.watch((changes) => {
+      for (const [id, post] of changes) {
+        if (!loaded) changed.add(id);
+        if (post) posts.set(id, post);
+        else posts.delete(id);
       }
-      if (touched) publish();
-    };
-    chrome.storage.onChanged.addListener(onChanged);
-    void chrome.storage.session.get(null).then((all) => {
-      for (const [key, value] of Object.entries(all)) {
-        if (key.startsWith(CHECKED_PREFIX) && !changed.has(key)) {
-          posts.set(key, value as CheckedPost);
-        }
+      publish();
+    });
+    void store.checked.getAll().then((all) => {
+      for (const [id, post] of all) {
+        if (!changed.has(id)) posts.set(id, post);
       }
       loaded = true;
       publish();
     });
-    return () => chrome.storage.onChanged.removeListener(onChanged);
+    return () => {
+      alive = false;
+      unwatch();
+    };
   }, []);
   return checked;
 }
@@ -142,6 +139,7 @@ export function useActiveTab() {
     chrome.tabs.onUpdated.addListener(onUpdated);
     chrome.runtime.onMessage.addListener(onMessage);
     return () => {
+      seq++;
       chrome.tabs.onActivated.removeListener(refresh);
       chrome.tabs.onUpdated.removeListener(onUpdated);
       chrome.runtime.onMessage.removeListener(onMessage);
@@ -153,20 +151,6 @@ export function useActiveTab() {
 /** Resolves to undefined when Slop Goblin isn't running in the tab. */
 function sendToTab<T>(tabId: number, message: TabMessage): Promise<T | undefined> {
   return chrome.tabs.sendMessage<TabMessage, T>(tabId, message).catch(() => undefined);
-}
-
-/** The time, with a re-render every second until `until`, for countdowns. */
-export function useTicker(until: number) {
-  const [, setTicks] = useState(0);
-  const now = Date.now();
-  const active = until > now;
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(() => setTicks((n) => n + 1), 1000);
-    return () => clearInterval(timer);
-  }, [active]);
-  // Read on each render, so a countdown that starts while the panel is open starts right.
-  return now;
 }
 
 /** The panel's host in the extension: settings in Chrome's storage, posts in the reader's tabs. */

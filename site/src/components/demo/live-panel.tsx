@@ -16,7 +16,7 @@ export function LivePanel({ demo }: { demo: Demo }) {
       <div className="live-panel-page">
         <HostContext value={demo.host}>
           <Den
-            header={<HomeTop enabled={settings.enabled} />}
+            header={<HomeTop enabled={settings.enabled} embedded />}
             goblin={<Lurker awake={settings.enabled} fed={hidden.length} />}
           >
             <div className="sheet-body">

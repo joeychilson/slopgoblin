@@ -12,9 +12,6 @@ export interface CheckedPost extends Judged {
   at: number;
 }
 
-/** Each post gets its own key so updates write and announce only that post. */
-export const CHECKED_PREFIX = "checked:";
-
 export interface HiddenPost {
   post: CheckedPost;
   verdict: Verdict;

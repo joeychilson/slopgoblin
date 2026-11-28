@@ -253,12 +253,12 @@ The page is built from the extension, so it can't drift from it:
 - Its side panel is the real one (`Den`, `Home` and `Lurker` in `extension/src/sidepanel/`),
   given a demo `Host` in place of Chrome.
 - What its feed hides, and how each bar reads, come from `hiddenAmong`, `judge` and `reason`
-  in `core/`.
+  in `core/`, and what each post shows and does comes from `viewFor` and `step` in
+  `content/view.ts`.
 - Its colors and type are the side panel's `tokens.css`. That's why the panel's own rules in
   `panel.css` are scoped to `.den`.
 
-Only the bar a hidden post folds into is a copy, since `content/bar.ts` is plain DOM in X's
-page.
+Only the bar's markup in its feed is a copy, since `content/bar.ts` is plain DOM in X's page.
 
 | Path                         | What it is                                                              |
 | ---------------------------- | ----------------------------------------------------------------------- |

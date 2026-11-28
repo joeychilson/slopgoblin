@@ -1,5 +1,5 @@
 import type { CheckedPost } from "../core/checked.ts";
-import { addsContext, type Scores } from "../core/decisions.ts";
+import { questionKey, type Scores } from "../core/decisions.ts";
 import type {
   ClassifyResponse,
   Priority,
@@ -28,7 +28,7 @@ const KEEP = 2000;
 
 interface Tracked extends PostState {
   post: Post;
-  status: "idle" | "pending" | "done" | "failed";
+  status: "idle" | "pending" | "done";
   queued?: boolean;
   scores: Scores;
   notSlop: boolean;
@@ -202,7 +202,8 @@ class Feed {
   private absorb(t: Tracked, read: Post) {
     const merged = mergePost(t.post, read);
     const gained =
-      addsContext(merged, t.post) || (!hasJudgeableContent(t.post) && hasJudgeableContent(merged));
+      questionKey(merged) !== questionKey(t.post) ||
+      (!hasJudgeableContent(t.post) && hasJudgeableContent(merged));
     if (!gained) return false;
     t.post = merged;
     if (t.status === "done") t.status = "idle";
@@ -273,7 +274,7 @@ class Feed {
   }
 
   private wantsRequest(t: Tracked) {
-    return !this.stopped && (t.status === "idle" || t.status === "failed") && this.worthAsking(t);
+    return !this.stopped && t.status === "idle" && this.worthAsking(t);
   }
 
   private askIfNear(t: Tracked) {
@@ -321,9 +322,8 @@ class Feed {
     } else if ("needsKey" in res) {
       this.setIdle(t);
     } else {
-      t.status = "failed";
+      this.setIdle(t);
       setTimeout(() => this.askIfNear(t), RETRY_MS);
-      this.changed();
     }
   }
 
@@ -542,7 +542,8 @@ const hasJudgeableContent = (post: Post) =>
 function bestNote(prev: ReaderNote | undefined, next: ReaderNote | undefined) {
   if (!prev) return next;
   if (!next) return prev;
-  return prev.rated && !next.rated ? prev : next;
+  if (prev.rated !== next.rated) return prev.rated ? prev : next;
+  return next.text.length > prev.text.length ? next : prev;
 }
 
 /** Keeps previously discovered context if X unmounts a parent or media while new content arrives. */

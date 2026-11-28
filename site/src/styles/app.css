@@ -3,14 +3,14 @@
 @import "@slopgoblin/extension/sidepanel/tokens.css";
 @import "@slopgoblin/extension/sidepanel/panel.css";
 
-/* The page is the side panel's den grown to a window: the green ground, one cream sheet, and the
-   goblin on an edge. Only the demo's feed is X's own white, or black at night. */
+/* The page is one green, deeper than the side panel's, so the live panel's own green top stands
+   out on it. The demo's feed is X's own white, or black at night. */
 :root {
+  --page: light-dark(#3d5c12, #10180a);
   --feed: light-dark(#ffffff, #070a05);
   --line: light-dark(rgb(38 52 18 / 0.11), rgb(255 255 255 / 0.09));
-  --fill-hover: light-dark(#466a15, #a6c564);
   /* The focus ring, in a color that stands out from what's behind it: cream on the green, green
-     on the sheet and the feed. */
+     on the feed and the panel. */
   --focus: var(--on-ground);
 
   /* The made-up people's avatars, muted so no one face stands out. */
@@ -23,7 +23,7 @@
 }
 
 html {
-  background: var(--ground);
+  background: var(--page);
   scrollbar-gutter: stable;
   /* Clear of the sticky masthead. */
   scroll-padding-top: 64px;
@@ -81,13 +81,6 @@ main {
   padding-inline: 20px;
 }
 
-/* Words on the left, the thing itself on the right. */
-.split {
-  display: grid;
-  gap: 48px 56px;
-  align-items: center;
-}
-
 /* Type: Bricolage for the name and headings, the system font for everything else. */
 
 .display {
@@ -110,15 +103,6 @@ main {
   text-wrap: pretty;
 }
 
-.body {
-  max-width: 26em;
-  margin-top: 20px;
-  color: var(--ink-2);
-  font-size: 18px;
-  line-height: 1.55;
-  text-wrap: pretty;
-}
-
 .note {
   margin-top: 16px;
   font-size: 14px;
@@ -126,7 +110,7 @@ main {
 }
 
 .text-link {
-  color: var(--accent);
+  color: inherit;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
   text-underline-offset: 4px;
@@ -147,13 +131,15 @@ main {
   text-decoration: underline;
 }
 
-/* A rounded action link: cream on the green, green on the cream. */
+/* A rounded action link, cream on the green. */
 .pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
   border-radius: 999px;
+  background: var(--on-ground);
+  color: var(--page);
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
@@ -162,26 +148,12 @@ main {
     scale 200ms var(--spring);
 }
 
-.pill:active {
-  scale: 0.96;
-}
-
-.pill.is-ground {
-  background: var(--on-ground);
-  color: var(--ground);
-}
-
-.pill.is-ground:hover {
+.pill:hover {
   background: #ffffff;
 }
 
-.pill.is-sheet {
-  background: var(--fill);
-  color: var(--on-fill);
-}
-
-.pill.is-sheet:hover {
-  background: var(--fill-hover);
+.pill:active {
+  scale: 0.96;
 }
 
 .pill.is-small {
@@ -196,7 +168,7 @@ main {
   font-size: 16px;
 }
 
-/* The header: the green bar along the top. The sheet scrolls up under it. */
+/* The header: the green bar along the top. The page scrolls up under it. */
 
 .skip {
   position: fixed;
@@ -206,7 +178,7 @@ main {
   padding: 8px 16px;
   border-radius: 999px;
   background: var(--on-ground);
-  color: var(--ground);
+  color: var(--page);
   font-size: 14px;
   font-weight: 500;
   translate: 0 -200%;
@@ -220,7 +192,7 @@ main {
   position: sticky;
   z-index: 30;
   top: 0;
-  background: var(--ground);
+  background: var(--page);
 }
 
 .masthead-row {
@@ -253,16 +225,53 @@ main {
   font-size: 15px;
 }
 
-/* The hero, on the green */
+/* The hero: the words, then the demo's feed and side panel side by side, both live. */
 
 .hero {
-  --aside: 400px;
-  padding-top: 32px;
+  padding-top: 48px;
   padding-bottom: 48px;
 }
 
-.hero-cta {
-  margin-top: 36px;
+.hero-words {
+  text-align: center;
+}
+
+.hero-words .lede {
+  max-width: 30em;
+  margin-inline: auto;
+  text-wrap: balance;
+}
+
+.hero-words .cta,
+.setup .cta {
+  justify-content: center;
+}
+
+/* A pill, with a note beside it when there's room. */
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 40px;
+}
+
+.cta .note {
+  margin-top: 0;
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 560px);
+  gap: 32px;
+  justify-content: center;
+  align-items: start;
+  margin-top: 64px;
+}
+
+.stage-note {
+  margin-top: 24px;
+  text-align: center;
 }
 
 .hero-words > *,
@@ -292,14 +301,12 @@ main {
   padding-bottom: 96px;
 }
 
-/* The feed, with the side panel's goblin hanging on to its top edge at twice the size: its head
-   behind the feed, its hands in front. */
+/* The feed, as X shows it */
 
 .feed-edge {
   --fade: 80px;
   position: relative;
   isolation: isolate;
-  margin-top: 84px;
 }
 
 /* Fades out the feed's bottom edge, which stays put while the feed scrolls under it. */
@@ -312,13 +319,6 @@ main {
   border-radius: 0 0 28px 28px;
   background: linear-gradient(to top, var(--feed), transparent);
   pointer-events: none;
-}
-
-.feed-goblin {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  zoom: 1.6;
 }
 
 .feed {
@@ -555,26 +555,10 @@ main {
   text-wrap: pretty;
 }
 
-/* The cream sheet, as in the side panel */
-
-.page-sheet {
-  --focus: var(--accent);
-  border-radius: 32px;
-  background: var(--sheet);
-  color: var(--ink);
-}
-
-.page-sheet > section {
-  padding-top: 80px;
-}
-
-.page-sheet > section:last-child {
-  padding-bottom: 80px;
-}
-
 /* The extension's side panel at its own size. It fades out at the bottom like the feed, into a
    sheet of the same cream, and its page scrolls under the fade. */
 .live-panel {
+  --focus: var(--accent);
   --fade: 96px;
   position: relative;
   justify-self: center;
@@ -612,9 +596,9 @@ main {
   display: grid;
   gap: 20px;
   max-width: 30em;
-  margin-top: 32px;
-  color: var(--ink-2);
+  margin-top: 24px;
   font-size: 18px;
+  text-align: left;
   line-height: 1.5;
   counter-reset: step;
 }
@@ -634,43 +618,33 @@ main {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--fill);
-  color: var(--on-fill);
+  background: var(--on-ground);
+  color: var(--page);
   font: 800 14px/1 var(--display);
 }
 
-.panel-section {
-  --aside: 360px;
-}
-
+/* Set up, centered like the hero: the steps, then what it sends and what it costs side by side. */
 .setup {
-  align-items: start;
-}
-
-.setup-cta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 20px;
-  margin-top: 40px;
-}
-
-.setup-cta .note {
-  margin-top: 0;
-  color: var(--muted);
+  display: grid;
+  justify-items: center;
+  padding-top: 64px;
+  padding-bottom: 64px;
+  text-align: center;
 }
 
 .facts {
   display: grid;
-  align-content: start;
-  gap: 36px;
-  color: var(--ink-2);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 32px 56px;
+  width: 100%;
+  max-width: 760px;
+  margin-top: 64px;
   font-size: 16px;
   line-height: 1.6;
+  text-align: left;
 }
 
 .facts dt {
-  color: var(--ink);
   font: 700 19px/1.3 var(--display);
 }
 
@@ -678,7 +652,7 @@ main {
   margin-top: 6px;
 }
 
-/* The footer, back on the green */
+/* The footer */
 
 .footer {
   padding-top: 48px;
@@ -690,10 +664,6 @@ main {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.footer .text-link {
-  color: inherit;
 }
 
 .footer-nav {
@@ -731,26 +701,6 @@ main {
     font-size: 21px;
   }
 
-  .feed-edge {
-    margin-top: 106px;
-  }
-
-  .feed-goblin {
-    zoom: 2;
-  }
-
-  .page-sheet {
-    border-radius: 48px;
-  }
-
-  .page-sheet > section {
-    padding-top: 112px;
-  }
-
-  .page-sheet > section:last-child {
-    padding-bottom: 112px;
-  }
-
   .footer-row {
     flex-direction: row;
     align-items: baseline;
@@ -759,32 +709,21 @@ main {
 }
 
 @media (width >= 1024px) {
-  .split {
-    grid-template-columns: minmax(0, 1fr) var(--aside, 400px);
-  }
-
   .hero {
-    padding-top: 16px;
+    padding-top: 56px;
   }
 
-  .feed {
-    height: clamp(400px, calc(100svh - 282px), 560px);
+  .stage {
+    grid-template-columns: minmax(0, 560px) 360px;
   }
 
+  .feed,
   .live-panel {
-    height: clamp(480px, calc(100svh - 200px), 620px);
-  }
-
-  .facts {
-    padding-top: 72px;
+    height: 540px;
   }
 }
 
 @media (width >= 1280px) {
-  .hero {
-    --aside: 440px;
-  }
-
   .display {
     font-size: 76px;
   }

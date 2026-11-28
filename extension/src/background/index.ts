@@ -1,21 +1,21 @@
 import type { ClassifyResponse, RuntimeMessage, TabMessage } from "../core/messages.ts";
 import { updateSettings } from "../core/settings.ts";
 import { store } from "../core/storage.ts";
-import { startBadge, updateBadge } from "./badge.ts";
+import { startBadge } from "./badge.ts";
 import { prune } from "./cache.ts";
 import { recordChecked, updateChecked } from "./checked.ts";
-import { classify, prioritize, setApiKey, setNotSlop } from "./classifier.ts";
+import { classify, prioritize, restoreApiKey, setApiKey, setNotSlop } from "./classifier.ts";
 
 void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 startBadge();
 
 let keyWatched = false;
-const keyLoaded = store.apiKey.get().then((key) => {
-  if (!keyWatched) setApiKey(key, false);
+const keyLoaded = Promise.all([store.apiKey.get(), store.status.get()]).then(([key, status]) => {
+  if (!keyWatched) restoreApiKey(key, status);
 });
 store.apiKey.watch((key) => {
   keyWatched = true;
-  setApiKey(key, true);
+  setApiKey(key);
   if (key) void tellTabs({ type: "retry" }, undefined);
 });
 void prune();
@@ -39,7 +39,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       prioritize(message.ids);
       return false;
     case "checked":
-      void recordChecked(message.posts).then(updateBadge);
+      void recordChecked(message.posts);
       return false;
     case "not-slop":
       void letThrough(message.id, message.notSlop, sender.tab?.id);
@@ -60,7 +60,6 @@ chrome.commands.onCommand.addListener((command) => {
  */
 async function letThrough(id: string, notSlop: boolean, fromTab: number | undefined) {
   await Promise.all([setNotSlop(id, notSlop), updateChecked(id, { notSlop })]);
-  updateBadge();
   await tellTabs({ type: "not-slop", id, notSlop }, fromTab);
 }
 

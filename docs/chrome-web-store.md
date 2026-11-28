@@ -28,7 +28,7 @@ Each post you scroll past is judged by Google's Gemini Decisions API, with your 
 • Switch off any kind of junk you don't mind.
 • Three strictness levels. Balanced catches most junk and hides about 1 real post in 300 by mistake.
 • Posts X itself labels as a paid partnership or "Made with AI" are hidden without asking Google.
-• Your own posts, people you follow and accounts you mark "Always show" are left alone, and Google is never asked about them.
+• Your own posts, people you follow (apart from their ads) and accounts you mark "Always show" are left alone, and Google is never asked about them.
 • The side panel lists what's been hidden lately, from every tab, and how many posts each strictness would hide.
 • Peek (Alt+Shift+P) shows hidden posts in place, with a label, so you can check its work.
 • Community notes count as evidence about a post.
@@ -95,9 +95,9 @@ Reviewers need a key and an X account, since X shows no feed signed out:
 ```
 1. Open the side panel from the toolbar icon and paste this Gemini API key: <key>
 2. Open https://x.com/home, signed in with the test account, and scroll. Junk posts fold into a bar that says why; click it to see the post.
-3. The side panel lists what was hidden. Settings (the sliders icon) switches categories and strictness.
+3. The side panel's first page sets the strictness and lists what was hidden. Settings (the sliders icon) switches categories.
 
-A script runs in x.com's own page (page.js) to read, from the data X loads, whether the user follows each post's author and which posts X labels as a paid partnership or "Made with AI". Posts from people they follow are never hidden or sent to Google to be judged, and labeled posts are hidden without asking Google. It wraps XMLHttpRequest and fetch to read X's API responses after X receives them, changes nothing, and passes on only handles with follow status, and labeled posts' IDs with their labels.
+A script runs in x.com's own page (page.js) to read, from the data X loads, whether the user follows each post's author and which posts X labels as a paid partnership or "Made with AI". Posts from people they follow are never sent to Google to be judged, and are hidden only when X labels them a paid partnership. Labeled posts are hidden without asking Google. It wraps XMLHttpRequest and fetch to read X's API responses after X receives them, changes nothing, and passes on only handles with follow status, and labeled posts' IDs with their labels.
 ```
 
 Delete the key and the X account once the review is done.

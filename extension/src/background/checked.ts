@@ -1,4 +1,5 @@
-import { CHECKED_PREFIX, type CheckedPost } from "../core/checked.ts";
+import type { CheckedPost } from "../core/checked.ts";
+import { store } from "../core/storage.ts";
 
 /** At <1 kB each, 3,000 posts fit comfortably inside session storage's 10 MB limit. */
 const KEEP = 3000;
@@ -7,23 +8,7 @@ const KEEP = 3000;
 // that order, so writes from different tabs can't interleave.
 let kept: Promise<Map<string, CheckedPost>> | undefined;
 
-function load() {
-  kept ??= chrome.storage.session
-    .get(null)
-    .then(
-      (all) =>
-        new Map(
-          Object.entries(all).flatMap(([key, value]) =>
-            key.startsWith(CHECKED_PREFIX)
-              ? [[key.slice(CHECKED_PREFIX.length), value as CheckedPost]]
-              : [],
-          ),
-        ),
-    );
-  return kept;
-}
-
-const keyOf = (id: string) => CHECKED_PREFIX + id;
+const load = () => (kept ??= store.checked.getAll());
 
 export async function checkedPosts() {
   return [...(await load()).values()];
@@ -47,9 +32,9 @@ export async function recordChecked(posts: CheckedPost[]) {
         }
       : post;
     all.set(post.id, entry);
-    items[keyOf(post.id)] = entry;
+    items[post.id] = entry;
   }
-  await chrome.storage.session.set(items);
+  await store.checked.set(items);
   await dropOldest(all);
 }
 
@@ -59,7 +44,7 @@ export async function updateChecked(id: string, change: Partial<CheckedPost>) {
   if (!post) return;
   const entry = { ...post, ...change };
   all.set(id, entry);
-  await chrome.storage.session.set({ [keyOf(id)]: entry });
+  await store.checked.set({ [id]: entry });
 }
 
 async function dropOldest(all: Map<string, CheckedPost>) {
@@ -69,5 +54,5 @@ async function dropOldest(all: Map<string, CheckedPost>) {
     .slice(0, all.size - KEEP)
     .map((post) => post.id);
   for (const id of oldest) all.delete(id);
-  await chrome.storage.session.remove(oldest.map(keyOf));
+  await store.checked.remove(oldest);
 }

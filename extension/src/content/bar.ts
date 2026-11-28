@@ -1,7 +1,7 @@
 import { EYE_OFF, GOBLIN_GLYPH } from "../core/glyphs.ts";
-import { letThroughNote, reason } from "../core/policy.ts";
+import { letThroughNote, reason, type Verdict } from "../core/policy.ts";
 import { displayName } from "../core/post.ts";
-import type { BarAction, View } from "./view.ts";
+import { lineActions, type BarAction, type View } from "./view.ts";
 
 /** Applies a view to a post's container. Hiding is pure CSS keyed off `data-sg`. */
 export function renderCell(cell: HTMLElement, view: View) {
@@ -23,58 +23,49 @@ export function renderCell(cell: HTMLElement, view: View) {
   if (bar.dataset.key === key) return;
   bar.dataset.key = key;
   bar.dataset.id = view.id;
+  // Focus on a button that goes moves to the new bar's last one: Show, Hide or Undo.
+  const hadFocus = bar.contains(document.activeElement);
   bar.replaceChildren(row(view));
+  if (hadFocus) [...bar.querySelectorAll<HTMLElement>("button")].at(-1)?.focus();
 }
 
 function row(view: Exclude<View, { mode: "shown" | "removed" }>) {
   const name = displayName(view.author);
-  if (view.mode === "confirmed") {
-    return context(
-      letThroughNote(view.action, name),
-      [],
-      button("undo", "sg-link sg-primary", "Undo"),
-    );
-  }
-
-  const { category } = view.verdict;
-  const { label, midSentence, possibly } = reason(view.verdict);
-  const why = possibly ? ["Possibly ", el("strong", "", midSentence)] : [el("strong", "", label)];
-
   if (view.mode === "collapsed") {
     // The author's faded avatar stands in for the post. A porn bot's avatar would defeat the point.
-    const mark = category === "nsfw" ? glyph("0 0 24 24", EYE_OFF, "sg-glyph") : ghost(view.avatar);
+    const mark =
+      view.verdict.category === "nsfw"
+        ? glyph("0 0 24 24", EYE_OFF, "sg-glyph")
+        : ghost(view.avatar);
     return button("reveal", "sg-row", [
       el("span", "sg-slot", [mark]),
-      el("span", "sg-what", [...why, ` from ${name}`]),
+      el("span", "sg-what", [...why(view.verdict), ` from ${name}`]),
       el("span", "sg-show", "Show"),
     ]);
   }
 
-  // There's no arguing with the site's own label.
-  const letThrough = view.verdict.labeled
-    ? []
-    : [
-        button("not-slop", "sg-link", `Not ${midSentence}`),
-        button("trust", "sg-link", `Always show ${name}`),
-      ];
-  // Hide sits where Show was, so the reader can flip a post back and forth.
-  return context(
-    why,
-    letThrough,
-    view.peek ? undefined : button("hide", "sg-link sg-primary", "Hide"),
-  );
+  // A line above the post: a small goblin lined up with the avatar's left edge, then the words.
+  // The post itself sits right under it.
+  const { more, main } = lineActions(view);
+  const words = view.mode === "confirmed" ? [letThroughNote(view.action, name)] : why(view.verdict);
+  const parts = [el("span", "sg-what", [goblin(), ...words])];
+  if (more.length) {
+    parts.push(
+      el(
+        "span",
+        "sg-more",
+        more.map((a) => button(a.action, "sg-link", a.label)),
+      ),
+    );
+  }
+  if (main) parts.push(button(main.action, "sg-link sg-primary", main.label));
+  return el("div", "sg-context", parts);
 }
 
-/**
- * A line above the post: a small goblin lined up with the avatar's left edge, then the words.
- * The post itself sits right under it.
- */
-function context(what: string | (string | Node)[], more: Node[], primary?: HTMLElement) {
-  const words = typeof what === "string" ? [what] : what;
-  const parts = [el("span", "sg-what", [goblin(), ...words])];
-  if (more.length) parts.push(el("span", "sg-more", more));
-  if (primary) parts.push(primary);
-  return el("div", "sg-context", parts);
+/** The reason, as the bar puts it: "Ragebait", or "Possibly ragebait" when it's a close call. */
+function why(verdict: Verdict) {
+  const { label, midSentence, possibly } = reason(verdict);
+  return possibly ? ["Possibly ", el("strong", "", midSentence)] : [el("strong", "", label)];
 }
 
 const SVG = "http://www.w3.org/2000/svg";

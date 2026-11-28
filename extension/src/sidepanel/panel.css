@@ -335,17 +335,31 @@
     }
   }
 
-  /* With two or more kinds hidden, the title is what picks which to show. */
+  /* With two or more kinds hidden, a native select sits over the title to pick which to show. */
   .list-title {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    max-width: 100%;
-    padding: 0;
-    border: 0;
-    background: none;
-    letter-spacing: inherit;
+    min-width: 0;
+    border-radius: 6px;
+  }
+
+  .list-title select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    background: var(--sheet);
+    color: var(--ink);
+    font: 13px/18px var(--body);
     cursor: pointer;
+  }
+
+  .list-title:has(select:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .list-title-text {
@@ -368,58 +382,99 @@
     color: var(--ink);
   }
 
-  .list-title[aria-expanded="true"] .icon {
-    transform: rotate(180deg);
-  }
+  /* Where Chrome draws a select's list from CSS (135 and later), the kinds open under the title as
+   rows like "What to hide" in Settings, each count at its row's end, the one shown filled like an
+   open post. Elsewhere the system's menu shows them. */
+  @supports (appearance: base-select) {
+    .list-title select,
+    .list-title select::picker(select) {
+      appearance: base-select;
+    }
 
-  /* The kinds, as rows like "What to hide" in Settings. The one shown is filled, like an open
-   post, and each count ends where a post's reason does. The box that clips while they open is
-   as wide as the rows, so their rounded ends show. */
-  .kinds {
-    margin: 0 -4px;
-  }
+    .list-title select::picker(select) {
+      min-width: 200px;
+      margin-top: 8px;
+      padding: 4px;
+      border: 0;
+      border-radius: 20px;
+      background: var(--sheet);
+      box-shadow:
+        0 0 0 1px var(--well-strong),
+        0 12px 32px rgb(0 0 0 / 0.16);
+      transition:
+        opacity 160ms var(--glide),
+        translate 240ms var(--glide),
+        display 240ms allow-discrete,
+        overlay 240ms allow-discrete;
+    }
 
-  .kinds .rows {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 0;
-    padding-bottom: 8px;
-  }
+    .list-title select:not(:open)::picker(select) {
+      opacity: 0;
+      translate: 0 -4px;
+    }
 
-  .kinds .row {
-    width: 100%;
-    padding: 7px 8px;
-    border: 0;
-    background: none;
-    text-align: left;
-  }
+    @starting-style {
+      .list-title select:open::picker(select) {
+        opacity: 0;
+        translate: 0 -4px;
+      }
+    }
 
-  .kinds .row-title {
-    color: var(--ink-2);
-    font-weight: 500;
-  }
+    .list-title:has(select:open) .icon {
+      transform: rotate(180deg);
+    }
 
-  .kinds .row[aria-pressed="true"] {
-    background: var(--well);
-  }
+    .list-title option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 7px 8px 7px 12px;
+      border-radius: 16px;
+      color: var(--ink-2);
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 160ms;
+    }
 
-  .kinds .row-count {
-    color: var(--muted);
-  }
+    .list-title option + option {
+      margin-top: 2px;
+    }
 
-  .kinds .row[aria-pressed="true"] .row-title {
-    color: var(--ink);
-    font-weight: 600;
-  }
+    .list-title select:open option {
+      animation: drop 280ms var(--glide) both;
+      animation-delay: calc(40ms + var(--i) * 25ms);
+    }
 
-  .kinds .row:focus-visible {
-    outline-offset: -2px;
-  }
+    .list-title option::checkmark {
+      display: none;
+    }
 
-  .kinds.is-open .row {
-    animation: drop 280ms var(--glide) both;
-    animation-delay: calc(40ms + var(--i) * 25ms);
+    .list-title option:hover {
+      background: var(--hover);
+    }
+
+    .list-title option:checked {
+      background: var(--well);
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .list-title option:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+
+    .kind-label {
+      flex: 1;
+    }
+
+    .kind-bracket {
+      display: none;
+    }
+
+    .list-title option .row-count {
+      color: var(--muted);
+    }
   }
 
   /* Rows start 12px in, so what's in them starts at 20 like everything else. */
@@ -427,17 +482,13 @@
     margin: 0 -4px;
   }
 
-  /* Each row keeps the space under it, so the space grows and folds away with the row. */
+  /* Each row keeps the space under it, so the space grows in with the row. */
   .item {
     display: grid;
     grid-template-rows: 1fr;
     margin-bottom: 4px;
     animation: row-in 420ms var(--glide) both;
     animation-delay: calc(var(--order, 0) * 45ms);
-  }
-
-  .item.is-leaving {
-    animation: row-out 240ms var(--glide) forwards;
   }
 
   .item-inner {
@@ -455,16 +506,12 @@
     background: var(--well);
   }
 
-  .item-open,
-  .item-settled {
+  .item-open {
     display: grid;
     grid-template-columns: 32px minmax(0, 1fr);
     column-gap: 12px;
     width: 100%;
     padding: 10px 8px;
-  }
-
-  .item-open {
     border: 0;
     border-radius: 16px;
     background: none;
@@ -562,29 +609,30 @@
     font-style: italic;
   }
 
-  /* A row just let through keeps its face and name. Undo is where the reason was, and the text
-   says what happened, until the row folds away. */
-  .item-settled .item-body {
-    animation: fade 260ms var(--glide);
+  /* Sticky confirmation bar for the latest let-through; opaque so rows scroll cleanly behind it. */
+  .undo-bar {
+    position: sticky;
+    z-index: 2;
+    top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 4px 0 8px;
+    padding: 8px 8px 8px 14px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--sheet) 92%, var(--ink));
+    color: var(--ink-2);
+    font-size: 12px;
+    line-height: 16px;
+    animation: fade 220ms var(--glide);
   }
 
-  .item-settled .item-text {
-    color: var(--muted);
+  .undo-bar output {
+    min-width: 0;
   }
 
-  .item-undo {
-    padding: 0;
-    border: 0;
-    background: none;
-    cursor: pointer;
-  }
-
-  .item-undo:hover {
-    text-decoration: underline;
-  }
-
-  /* Opens in place and pushes what's under it down: what can be done about a post, under its
-   text, and the kinds, under the title. */
+  /* Opens in place and pushes what's under it down: what can be done about a post, under its text. */
   .unfold {
     display: grid;
     grid-template-rows: 0fr;
@@ -831,11 +879,12 @@
     opacity: 0;
   }
 
+  /* Apart from the switch row above, so a highlighted row and the chips don't run together. */
   .chips {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin: 0 4px;
+    margin: 12px 4px 0;
   }
 
   .chip {
@@ -845,7 +894,7 @@
     height: 30px;
     padding: 0 4px 0 12px;
     border-radius: 9999px;
-    background: var(--well);
+    background: var(--well-strong);
     font-weight: 600;
     animation: pop 320ms var(--spring);
   }
@@ -859,7 +908,7 @@
     border: 0;
     border-radius: 50%;
     background: none;
-    color: var(--muted);
+    color: var(--ink-2);
     cursor: pointer;
   }
 
@@ -1244,7 +1293,8 @@
   }
 }
 
-/* Drops 4px into place: the hands onto the sheet, and the buttons in a tray. */
+/* Drops 4px into place: the hands onto the sheet, the buttons in a tray, and the kinds in the
+   hidden list's select. */
 @keyframes drop {
   from {
     opacity: 0;
@@ -1303,15 +1353,6 @@
     margin-bottom: 0;
     opacity: 0;
     transform: translateY(-6px);
-  }
-}
-
-@keyframes row-out {
-  to {
-    grid-template-rows: 0fr;
-    margin-bottom: 0;
-    opacity: 0;
-    transform: translateX(16px);
   }
 }
 

@@ -1,7 +1,14 @@
 import type { Scores } from "./decisions.ts";
 import type { Label } from "./post.ts";
 import type { Settings } from "./settings.ts";
-import { ASKED, CATEGORIES, CATEGORY, LIKELIEST, THRESHOLD, type CategoryId } from "./taxonomy.ts";
+import {
+  CATEGORIES,
+  CATEGORY,
+  LIKELIEST,
+  THRESHOLD,
+  askedFor,
+  type CategoryId,
+} from "./taxonomy.ts";
 
 export interface Verdict {
   /** The likeliest of the categories switched on, or the site's own label. */
@@ -93,7 +100,7 @@ export function needsScores(
 ) {
   return (
     settled(post, settings) === undefined &&
-    ASKED.some((c) => settings.categories[c.id] && (post.isReply || !("repliesOnly" in c)))
+    askedFor(post.isReply).some((c) => settings.categories[c.id])
   );
 }
 

@@ -7,11 +7,12 @@ import { useHost } from "./host.ts";
 import { Summary } from "./Summary.tsx";
 
 /** The header over home: the name, Settings when there's a settings view to open, and the switch. */
-export function HomeTop(props: { enabled: boolean; onSettings?: () => void }) {
+export function HomeTop(props: { enabled: boolean; onSettings?: () => void; embedded?: boolean }) {
   const host = useHost();
+  const Wordmark = props.embedded ? "p" : "h1";
   return (
     <div className="top-row">
-      <h1 className="wordmark">Slop Goblin</h1>
+      <Wordmark className="wordmark">Slop Goblin</Wordmark>
       {props.onSettings && (
         <button
           type="button"

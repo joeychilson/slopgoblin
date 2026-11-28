@@ -130,10 +130,14 @@ export function settings(sw: Worker, patch?: object) {
   }, patch);
 }
 
-/** The side panel, in a tab of its own, taking the first X tab as the active one. */
-export async function openPanel(ctx: BrowserContext, extension: string) {
+/**
+ * The side panel, in a tab of its own, taking the first X tab as the active one. `init` runs in it
+ * before the panel does.
+ */
+export async function openPanel(ctx: BrowserContext, extension: string, init?: () => void) {
   const panel = await ctx.newPage();
   await panel.setViewportSize({ width: 360, height: 900 });
+  if (init) await panel.addInitScript(init);
   await panel.addInitScript(() => {
     const query = chrome.tabs.query.bind(chrome.tabs);
     chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>

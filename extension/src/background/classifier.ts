@@ -3,7 +3,7 @@ import type { ClassifyResponse, Priority } from "../core/messages.ts";
 import { REFUSED, needsScores } from "../core/policy.ts";
 import { isReply, type Post } from "../core/post.ts";
 import { loadSettings } from "../core/settings.ts";
-import { store, thisMonth, type ServiceStatus } from "../core/storage.ts";
+import { store, thisMonth, type ServiceStatus, type Usage } from "../core/storage.ts";
 import { getEntry, putEntry } from "./cache.ts";
 
 const CONCURRENCY = 4;
@@ -35,20 +35,29 @@ let active = 0;
 const waiting: Waiter[] = [];
 const inflight = new Map<string, Inflight>();
 
-/** `isNew` is false when a restarted worker loads the key it already had, so the status stands. */
-export function setApiKey(key: string | undefined, isNew: boolean) {
+/** A key the reader just saved: what went wrong with the last one no longer stands. */
+export function setApiKey(key: string | undefined) {
   apiKey = key;
   keyRejected = false;
-  if (!isNew) return;
   pausedUntil = 0;
   wakePaused();
   void setStatus({ kind: "ok" });
 }
 
+/**
+ * A restarted worker takes up the key it had where its saved status left off, so it doesn't try
+ * a key Google rejected again, or ask again before a rate limit is over.
+ */
+export function restoreApiKey(key: string | undefined, status: ServiceStatus | undefined) {
+  apiKey = key;
+  keyRejected = status?.kind === "bad-key";
+  if (status?.kind === "rate-limited") pausedUntil = status.until;
+}
+
 export function classify(
   post: Post,
   cachedOnly: boolean,
-  priority: Priority = 0,
+  priority: Priority,
 ): Promise<ClassifyResponse> {
   const key = questionKey(post);
   if (cachedOnly) return run(post, key, true, () => priority);
@@ -99,7 +108,9 @@ async function run(
 ): Promise<ClassifyResponse> {
   let entry = await getEntry(post.id);
   const now = Date.now();
-  if (entry?.key === key) {
+  // A post the reader let through won't be hidden, so it isn't asked about again even when it
+  // turns up with more context than it was answered on.
+  if (entry && (entry.key === key || entry.notSlop)) {
     if (now - entry.seen > TOUCH_MS) void putEntry({ ...entry, seen: now }).catch(() => {});
     return { scores: entry.scores, notSlop: Boolean(entry.notSlop) };
   }
@@ -238,7 +249,6 @@ async function setStatus(status: ServiceStatus) {
 
 let unsaved = { posts: 0, tokens: 0 };
 let saving: ReturnType<typeof setTimeout> | undefined;
-let usageQueue: Promise<void> = Promise.resolve();
 
 function recordUsage(tokens: number) {
   unsaved.posts++;
@@ -247,17 +257,12 @@ function recordUsage(tokens: number) {
     saving = undefined;
     const added = unsaved;
     unsaved = { posts: 0, tokens: 0 };
-    const write = async () => {
+    const count = (saved: Usage | undefined): Usage => {
       const month = thisMonth();
-      const saved = await store.usage.get();
       const before = saved?.month === month ? saved : { posts: 0, tokens: 0 };
-      await store.usage.set({
-        month,
-        posts: before.posts + added.posts,
-        tokens: before.tokens + added.tokens,
-      });
+      return { month, posts: before.posts + added.posts, tokens: before.tokens + added.tokens };
     };
-    usageQueue = usageQueue.then(write, write).catch(() => {});
+    store.usage.update(count).catch(() => {});
   }, 1000);
 }
 

@@ -115,6 +115,9 @@ export type CategoryId = (typeof CATEGORIES)[number]["id"];
 /** The categories Google is asked about. */
 export const ASKED = CATEGORIES.filter((c) => "describes" in c);
 
+/** The categories Google is asked about for one post: reply spam only for a reply. */
+export const askedFor = (reply: boolean) => ASKED.filter((c) => reply || !("repliesOnly" in c));
+
 export const CATEGORY = Object.fromEntries(CATEGORIES.map((c) => [c.id, c])) as Record<
   CategoryId,
   Category

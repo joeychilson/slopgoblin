@@ -1,4 +1,4 @@
-import { stored } from "./storage.ts";
+import { store } from "./storage.ts";
 import { CATEGORIES, type CategoryId, type Strictness } from "./taxonomy.ts";
 
 export interface Settings {
@@ -37,25 +37,16 @@ export const trusting =
     return { trusted: on ? [...new Set([...trusted, h])] : trusted.filter((t) => t !== h) };
   };
 
-/** Synced through the reader's Chrome profile. */
-const saved = stored<Partial<Settings>>("sync", "settings");
+export const loadSettings = async () => withDefaults(await store.settings.get());
 
-export const loadSettings = async () => withDefaults(await saved.get());
-
-let pending: Promise<void> = Promise.resolve();
-
-export function updateSettings(patch: (s: Settings) => Partial<Settings>) {
-  const run = async () => {
-    const current = await loadSettings();
-    await saved.set({ ...current, ...patch(current) });
-  };
-  const next = pending.then(run, run);
-  pending = next.catch(() => {});
-  return next;
-}
+export const updateSettings = (patch: (s: Settings) => Partial<Settings>) =>
+  store.settings.update((s) => {
+    const current = withDefaults(s);
+    return { ...current, ...patch(current) };
+  });
 
 export const watchSettings = (onChange: (s: Settings) => void) =>
-  saved.watch((s) => onChange(withDefaults(s)));
+  store.settings.watch((s) => onChange(withDefaults(s)));
 
 function withDefaults(saved: Partial<Settings> | undefined): Settings {
   return {

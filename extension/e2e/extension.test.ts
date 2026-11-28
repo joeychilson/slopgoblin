@@ -368,43 +368,66 @@ describe("on X", { timeout: 30_000 }, () => {
     }
   });
 
-  it("lets a post through from the side panel, in the tab too, and undoes it in place", async () => {
+  it("lets a post through from the side panel, in the tab too, and undoes it", async () => {
     const row = '.item:has-text("Growth Guru")';
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
-    await poll(() => panel.innerText(`${row}.is-settled`)).toMatch(/won't be hidden again/);
-    await panel.click(`${row} .item-undo`);
+    await poll(() => panel.locator(row).count()).toBe(0);
+    await poll(() => panel.innerText(".undo-bar")).toMatch(/won't be hidden again/);
+    await panel.click(".undo-bar button");
     await shows(x, "slopper", "collapsed");
     await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
-    // Undoing from the post's bar in X immediately restores the settling row in the panel.
+    await poll(() => panel.locator(".undo-bar").count()).toBe(0);
+    // Focus goes to the post Undo brought back, which arrives at once, not with the delay it had
+    // when the panel opened.
+    await poll(() => panel.locator(`${row} .item-open:focus`).count()).toBe(1);
+    expect(await panel.locator(row).evaluate((el) => getComputedStyle(el).animationDelay)).toBe(
+      "0s",
+    );
+    // Undoing from the post's bar in X immediately dismisses the undo bar and restores the row.
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
-    await poll(() => panel.locator(`${row}.is-settled`).count()).toBe(1);
+    await poll(() => panel.locator(".undo-bar").count()).toBe(1);
     await click(x, "slopper", "[data-sg-action=undo]");
     await shows(x, "slopper", "revealed");
-    await poll(() => panel.locator(`${row}:not(.is-settled) .item-open`).count()).toBe(1);
+    await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
+    await poll(() => panel.locator(".undo-bar").count()).toBe(0);
     await click(x, "slopper", "[data-sg-action=hide]");
     await shows(x, "slopper", "collapsed");
-    // Let it through again: this time it folds away on its own, once the pointer is off it.
+    // Let it through again: the undo bar dismisses on its own once the pointer is off it.
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
     await shows(x, "slopper", "confirmed");
     await panel.mouse.move(0, 0);
-    await poll(() => panel.innerText(".hidden")).not.toContain("Growth Guru");
+    await poll(() => panel.locator(".undo-bar").count()).toBe(0);
+    expect(await panel.innerText(".hidden")).not.toContain("Growth Guru");
+    // From the keyboard, the bar stays while focus is on it.
+    const rage = '.item:has-text("Rage Farm")';
+    await panel.click(`${rage} .item-open`);
+    await panel.focus(`${rage} button:has-text("Not ragebait")`);
+    await panel.keyboard.press("Enter");
+    await poll(() => panel.locator(".undo-bar button:focus").count()).toBe(1);
+    await sleep(6000);
+    expect(await panel.locator(".undo-bar").count()).toBe(1);
+    await panel.keyboard.press("Enter");
+    await poll(() => panel.locator(`${rage} .item-open:focus`).count()).toBe(1);
+    await shows(x, "rager", "collapsed");
   });
 
   it("shows one kind of hidden post, picked from the list's title", async () => {
     await panel.click(".list-title");
-    await panel.click('.kinds .row:has-text("Ragebait")');
+    await panel.click('.list-title option:has-text("Ragebait")');
     await poll(() => panel.locator(".list .item").count()).toBe(1);
     expect(await panel.innerText(".list")).toContain("Rage Farm");
-    expect(await panel.innerText(".list-title")).toBe("Ragebait");
+    // The heading is named by what it shows, not by the options beside it.
+    const heading = (name: string) => panel.getByRole("heading", { level: 2, name, exact: true });
+    expect(await heading("Ragebait").count()).toBe(1);
     await panel.click(".list-title");
-    await panel.click('.kinds .row:has-text("All")');
+    await panel.click('.list-title option:has-text("All")');
     await poll(() => panel.locator(".list .item").count()).toBeGreaterThan(1);
-    expect(await panel.innerText(".list-title")).toBe("Hidden posts");
+    expect(await heading("Hidden posts").count()).toBe(1);
   });
 
   it("re-checks a post when a lazy-loaded image arrives later", async () => {
@@ -533,8 +556,11 @@ describe("on X", { timeout: 30_000 }, () => {
   });
 
   it("stops the rate-limit countdown timer once it expires", async () => {
-    const fresh = await m.ctx.newPage();
-    await fresh.addInitScript(() => {
+    await m.sw.evaluate(() =>
+      chrome.storage.session.set({ status: { kind: "rate-limited", until: Date.now() + 1200 } }),
+    );
+    // Counts the panel's running intervals.
+    const fresh = await openPanel(m.ctx, m.extension, () => {
       const active = new Set<number>();
       const origSet = window.setInterval;
       const origClear = window.clearInterval;
@@ -548,17 +574,8 @@ describe("on X", { timeout: 30_000 }, () => {
         return origClear(id);
       }) as typeof clearInterval;
       (window as unknown as { __intervals: () => number }).__intervals = () => active.size;
-      const query = chrome.tabs.query.bind(chrome.tabs);
-      chrome.tabs.query = async (info: chrome.tabs.QueryInfo) =>
-        info.active ? (await query({ url: "https://x.com/*" })).slice(0, 1) : query(info);
     });
     try {
-      await m.sw.evaluate(() =>
-        chrome.storage.session.set({
-          status: { kind: "rate-limited", until: Date.now() + 1200 },
-        }),
-      );
-      await fresh.goto(`chrome-extension://${m.extension}/sidepanel/index.html`);
       await poll(() => fresh.locator(".notice").count()).toBe(1);
       await poll(() => fresh.locator(".notice").count()).toBe(0);
       await expect
@@ -676,24 +693,103 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
       text: "Wait for it [ai_slop .8]",
       media: "photo",
     };
-    const m = await launch([photo]);
+    const m = await launch([]);
     try {
       const page = await m.ctx.newPage();
       await page.goto("https://x.com/home");
+      // Once the extension is running, so the post's timeouts start when it turns up.
+      await page.waitForSelector("html[data-sg-theme]", { state: "attached" });
+      await append(page, cell(photo));
       // Still waiting past the 300ms fast-settle window while tweetPhoto is empty.
-      await sleep(450);
+      await sleep(350);
       expect(m.sent).toEqual([]);
 
-      const arrived = Date.now();
-      await page.locator(cellOf("photopost")).evaluate((el) => {
+      // A text post turns up as the image does. It's asked about once it has settled for 300ms,
+      // so the photo goes first only if the image woke it, rather than its 1s timeout.
+      const text = cell({ id: "612", handle: "textpost", name: "Text Post", text: "Hello" });
+      await page.locator(cellOf("photopost")).evaluate((el, text) => {
         const img = document.createElement("img");
         img.src = "https://pbs.twimg.com/media/hydrated.jpg?format=jpg&name=small";
         el.querySelector('[data-testid="tweetPhoto"]')!.append(img);
-      });
-      await poll(() => m.sent.length).toBe(1);
-      expect(Date.now() - arrived).toBeLessThan(250);
+        el.insertAdjacentHTML("afterend", text);
+      }, text);
+      await poll(() => m.sent.length).toBe(2);
+      expect(m.sent.map(handleIn)).toEqual(["photopost", "textpost"]);
       expect(m.sent[0]).toMatch(/Attached image/);
       await shows(page, "photopost", "collapsed", /^AI slop from Photo Post/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("counts this month's posts and their cost in Settings", async () => {
+    const m = await launch(
+      [
+        { id: "620", handle: "first", name: "First", text: "One" },
+        { id: "621", handle: "second", name: "Second", text: "Two" },
+      ],
+      (route) =>
+        route.fulfill({
+          json: {
+            answers: { kind: { probabilities: { fine: 1 } } },
+            usage: { total_input_tokens: 100_000 },
+          },
+        }),
+    );
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(2);
+      const panel = await openPanel(m.ctx, m.extension);
+      await panel.click('[aria-label="Settings"]');
+      await poll(() => panel.innerText("body")).toContain(
+        "2 posts checked this month: about $0.02 on a paid key, nothing on a free one.",
+      );
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("asks again when a post's community note grows, not when X reads it shorter", async () => {
+    const post = { id: "622", handle: "noted", name: "Noted", text: "Real photo" };
+    const m = await launch([{ ...post, note: "Made with AI. The photo is from 2019." }]);
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await poll(() => m.sent.length).toBe(1);
+      const reread = async (note: string) => {
+        await x.locator(cellOf("noted")).evaluate((el) => el.remove());
+        await append(x, cell({ ...post, note }));
+      };
+      await reread("Made with AI.");
+      await sleep(1500);
+      expect(m.sent).toHaveLength(1);
+      await reread("Made with AI. The photo is from a 2019 film shoot.");
+      await poll(() => m.sent.length).toBe(2);
+      expect(m.sent[1]).toContain("2019 film shoot");
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("doesn't ask again about a post the reader let through, when it turns up with a note", async () => {
+    const post = { id: "624", handle: "slopper", name: "Growth Guru", text: "Hooks [ai_slop .8]" };
+    const m = await launch([post]);
+    try {
+      const home = await m.ctx.newPage();
+      await home.goto("https://x.com/home");
+      await shows(home, "slopper", "collapsed");
+      await click(home, "slopper", ".sg-row");
+      await click(home, "slopper", "[data-sg-action=not-slop]");
+      await shows(home, "slopper", "confirmed");
+      // Elsewhere, the post turns up again with a community note, so it reads differently.
+      const other = await m.ctx.newPage();
+      await other.goto("https://x.com/explore");
+      await other.waitForSelector("html[data-sg-theme]", { state: "attached" });
+      await append(other, cell({ ...post, note: "Made with AI." }));
+      await shows(other, "slopper", "shown");
+      await sleep(1500);
+      expect(m.sent).toHaveLength(1);
     } finally {
       await m.ctx.close();
     }
@@ -767,13 +863,108 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
   });
 });
 
+describe("keyboard focus", { timeout: 60_000 }, () => {
+  it("stays in X's bar as its buttons change", async () => {
+    const post = { id: "628", handle: "rager", name: "Rage Farm", text: "Outrage [ragebait .9]" };
+    const m = await launch([post]);
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await shows(x, "rager", "collapsed");
+      const focused = (action: string) =>
+        poll(() => x.locator(`[data-sg-action=${action}]:focus`).count()).toBe(1);
+      await x.focus("[data-sg-action=reveal]");
+      await x.keyboard.press("Enter");
+      await focused("hide");
+      await x.focus("[data-sg-action=not-slop]");
+      await x.keyboard.press("Enter");
+      await focused("undo");
+      await x.keyboard.press("Enter");
+      await focused("hide");
+      await x.keyboard.press("Enter");
+      await focused("reveal");
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("moves along the Always show chips as they're removed", async () => {
+    const m = await launch([]);
+    try {
+      await settings(m.sw, { trusted: ["first", "second"] });
+      const panel = await openPanel(m.ctx, m.extension);
+      await panel.click('[aria-label="Settings"]');
+      await panel.focus('[aria-label="Stop always showing @first"]');
+      await panel.keyboard.press("Enter");
+      await poll(() =>
+        panel.locator('[aria-label="Stop always showing @second"]:focus').count(),
+      ).toBe(1);
+      await panel.keyboard.press("Enter");
+      await poll(() =>
+        panel.locator('[role="switch"][aria-label="People you follow"]:focus').count(),
+      ).toBe(1);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("stays on the page when the Undo bar closes with nothing left hidden", async () => {
+    const post = { id: "627", handle: "slopper", name: "Growth Guru", text: "Hooks [ai_slop .8]" };
+    const m = await launch([post]);
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await shows(x, "slopper", "collapsed");
+      const panel = await openPanel(m.ctx, m.extension);
+      await panel.click(".item-open");
+      await panel.click('button:has-text("Not AI slop")');
+      await poll(() => panel.locator(".undo-bar").count()).toBe(1);
+      await panel.mouse.move(0, 0);
+      await poll(() => panel.locator(".undo-bar").count()).toBe(0);
+      expect(await panel.locator(".summary input:checked:focus").count()).toBe(1);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("keeps focus on Undo when the post won't show, and doesn't take it when it does later", async () => {
+    const m = await launch([
+      { id: "628", handle: "slopper", name: "Growth Guru", text: "Hooks [ai_slop .8]" },
+      { id: "629", handle: "edgy", name: "Edge Case", text: "Maybe [ai_slop .55]" },
+    ]);
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      await shows(x, "slopper", "collapsed");
+      const panel = await openPanel(m.ctx, m.extension);
+      const strictness = (name: string) => panel.click(`.summary label:has-text("${name}")`);
+      const edge = '.item:has-text("Edge Case")';
+      await strictness("Strict");
+      await panel.click(`${edge} .item-open`);
+      await panel.click(`${edge} button:has-text("Not AI slop")`);
+      await poll(() => panel.locator(".undo-bar").count()).toBe(1);
+      // Balanced doesn't hide the post, so Undo has no row to go to.
+      await strictness("Balanced");
+      await panel.click(".undo-bar button");
+      await poll(() => panel.locator(".item-open:focus").count()).toBe(1);
+      await strictness("Strict");
+      await poll(() => panel.locator(edge).count()).toBe(1);
+      await sleep(300);
+      expect(await panel.locator(".summary input:checked:focus").count()).toBe(1);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+});
+
 describe("with a key Google rejects", { timeout: 60_000 }, () => {
+  const rejected = {
+    code: 400,
+    message: "API key not valid.",
+    details: [{ reason: "API_KEY_INVALID" }],
+  };
+
   it("says so in the side panel", async () => {
-    const rejected = {
-      code: 400,
-      message: "API key not valid.",
-      details: [{ reason: "API_KEY_INVALID" }],
-    };
     const m = await launch(POSTS, (route) =>
       route.fulfill({ status: 400, json: { error: rejected } }),
     );
@@ -781,6 +972,28 @@ describe("with a key Google rejects", { timeout: 60_000 }, () => {
       await (await m.ctx.newPage()).goto("https://x.com/home");
       const panel = await openPanel(m.ctx, m.extension);
       await poll(() => panel.innerText(".sheet")).toMatch(/Google rejected your API key/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("doesn't try it again after Chrome restarts the service worker", async () => {
+    const m = await launch([POSTS[0]!], (route) =>
+      route.fulfill({ status: 400, json: { error: rejected } }),
+    );
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      const panel = await openPanel(m.ctx, m.extension);
+      await poll(() => panel.innerText(".sheet")).toMatch(/Google rejected your API key/);
+      const asked = m.sent.length;
+      // As Chrome does to a worker that's been idle.
+      const cdp = await m.ctx.newCDPSession(panel);
+      await cdp.send("ServiceWorker.enable");
+      await cdp.send("ServiceWorker.stopAllWorkers");
+      await append(x, cell({ id: "626", handle: "later", name: "Later", text: "New post" }));
+      await sleep(1500);
+      expect(m.sent).toHaveLength(asked);
     } finally {
       await m.ctx.close();
     }

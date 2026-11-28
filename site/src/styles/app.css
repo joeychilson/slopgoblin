@@ -253,7 +253,7 @@ main {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 20px;
-  margin-top: 36px;
+  margin-top: 40px;
 }
 
 .cta .note {
@@ -266,7 +266,7 @@ main {
   gap: 32px;
   justify-content: center;
   align-items: start;
-  margin-top: 56px;
+  margin-top: 64px;
 }
 
 .stage-note {
@@ -596,7 +596,7 @@ main {
   display: grid;
   gap: 20px;
   max-width: 30em;
-  margin-top: 32px;
+  margin-top: 24px;
   font-size: 18px;
   text-align: left;
   line-height: 1.5;
@@ -632,17 +632,13 @@ main {
   text-align: center;
 }
 
-.setup .cta {
-  margin-top: 40px;
-}
-
 .facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 32px 56px;
   width: 100%;
   max-width: 760px;
-  margin-top: 72px;
+  margin-top: 64px;
   font-size: 16px;
   line-height: 1.6;
   text-align: left;

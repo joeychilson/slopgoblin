@@ -45,24 +45,22 @@ function Home() {
         </p>
       </section>
 
-      <section aria-labelledby="setup-title" className="column split setup">
-        <div>
-          <h2 id="setup-title" className="title">
-            Set up in a minute
-          </h2>
-          <ol className="steps">
-            <Step>Add Slop Goblin to Chrome.</Step>
-            <Step>
-              Get a Gemini API key from <TextLink href={site.apiKey}>Google AI Studio</TextLink>.
-            </Step>
-            <Step>Click the goblin in Chrome’s extensions menu, paste the key, and scroll X.</Step>
-          </ol>
-          <div className="cta">
-            <PillLink href={site.store} size="large">
-              Add to Chrome
-            </PillLink>
-            <p className="note">Needs Chrome 123 or later.</p>
-          </div>
+      <section aria-labelledby="setup-title" className="column setup">
+        <h2 id="setup-title" className="title">
+          Set up in a minute
+        </h2>
+        <ol className="steps">
+          <Step>Add Slop Goblin to Chrome.</Step>
+          <Step>
+            Get a Gemini API key from <TextLink href={site.apiKey}>Google AI Studio</TextLink>.
+          </Step>
+          <Step>Click the goblin in Chrome’s extensions menu, paste the key, and scroll X.</Step>
+        </ol>
+        <div className="cta">
+          <PillLink href={site.store} size="large">
+            Add to Chrome
+          </PillLink>
+          <p className="note">Needs Chrome 123 or later.</p>
         </div>
         <dl className="facts">
           <div>

@@ -1,21 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CheckedPost } from "../core/checked.ts";
 import type { RuntimeMessage, TabMessage, TabState } from "../core/messages.ts";
-import { loadSettings, updateSettings, watchSettings, type Settings } from "../core/settings.ts";
+import { loadSettings, updateSettings, watchSettings } from "../core/settings.ts";
 import { store, thisMonth, type Stored } from "../core/storage.ts";
 import type { Host } from "./host.ts";
 
-export function useSettings() {
-  const [settings, setSettings] = useState<Settings>();
-  useEffect(() => {
-    void loadSettings().then(setSettings);
-    return watchSettings(setSettings);
-  }, []);
-  return settings;
-}
+const SETTINGS = { get: loadSettings, watch: watchSettings };
+
+export const useSettings = () => useStored(SETTINGS);
 
 /** A stored value, kept live: `undefined` while it loads, `null` when there's none. */
-function useStored<T>(item: Stored<T>): T | null | undefined {
+function useStored<T>(item: Pick<Stored<T>, "get" | "watch">): T | null | undefined {
   const [value, setValue] = useState<T | null>();
   useEffect(() => {
     let changed = false;

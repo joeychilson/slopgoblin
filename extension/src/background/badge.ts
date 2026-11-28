@@ -1,5 +1,6 @@
 import { hiddenAmong } from "../core/checked.ts";
 import { loadSettings, watchSettings } from "../core/settings.ts";
+import { store } from "../core/storage.ts";
 import { checkedPosts } from "./checked.ts";
 
 /**
@@ -11,13 +12,14 @@ export function startBadge() {
   void chrome.action.setBadgeBackgroundColor({ color: "#4f731a" });
   void chrome.action.setBadgeTextColor({ color: "#ffffff" });
   watchSettings(updateBadge);
+  store.checked.watch(updateBadge);
   updateBadge();
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 /** Recounts, a quarter-second's worth of changes at a time. */
-export function updateBadge() {
+function updateBadge() {
   timer ??= setTimeout(() => {
     timer = undefined;
     void show();

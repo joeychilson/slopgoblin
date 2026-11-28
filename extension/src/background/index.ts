@@ -4,18 +4,18 @@ import { store } from "../core/storage.ts";
 import { startBadge } from "./badge.ts";
 import { prune } from "./cache.ts";
 import { recordChecked, updateChecked } from "./checked.ts";
-import { classify, prioritize, setApiKey, setNotSlop } from "./classifier.ts";
+import { classify, prioritize, restoreApiKey, setApiKey, setNotSlop } from "./classifier.ts";
 
 void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 startBadge();
 
 let keyWatched = false;
-const keyLoaded = store.apiKey.get().then((key) => {
-  if (!keyWatched) setApiKey(key, false);
+const keyLoaded = Promise.all([store.apiKey.get(), store.status.get()]).then(([key, status]) => {
+  if (!keyWatched) restoreApiKey(key, status);
 });
 store.apiKey.watch((key) => {
   keyWatched = true;
-  setApiKey(key, true);
+  setApiKey(key);
   if (key) void tellTabs({ type: "retry" }, undefined);
 });
 void prune();

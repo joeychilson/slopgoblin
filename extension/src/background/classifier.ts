@@ -35,14 +35,23 @@ let active = 0;
 const waiting: Waiter[] = [];
 const inflight = new Map<string, Inflight>();
 
-/** `isNew` is false when a restarted worker loads the key it already had, so the status stands. */
-export function setApiKey(key: string | undefined, isNew: boolean) {
+/** A key the reader just saved: what went wrong with the last one no longer stands. */
+export function setApiKey(key: string | undefined) {
   apiKey = key;
   keyRejected = false;
-  if (!isNew) return;
   pausedUntil = 0;
   wakePaused();
   void setStatus({ kind: "ok" });
+}
+
+/**
+ * A restarted worker takes up the key it had where its saved status left off, so it doesn't try
+ * a key Google rejected again, or ask again before a rate limit is over.
+ */
+export function restoreApiKey(key: string | undefined, status: ServiceStatus | undefined) {
+  apiKey = key;
+  keyRejected = status?.kind === "bad-key";
+  if (status?.kind === "rate-limited") pausedUntil = status.until;
 }
 
 export function classify(

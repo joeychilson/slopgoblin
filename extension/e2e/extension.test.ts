@@ -849,12 +849,13 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
 });
 
 describe("with a key Google rejects", { timeout: 60_000 }, () => {
+  const rejected = {
+    code: 400,
+    message: "API key not valid.",
+    details: [{ reason: "API_KEY_INVALID" }],
+  };
+
   it("says so in the side panel", async () => {
-    const rejected = {
-      code: 400,
-      message: "API key not valid.",
-      details: [{ reason: "API_KEY_INVALID" }],
-    };
     const m = await launch(POSTS, (route) =>
       route.fulfill({ status: 400, json: { error: rejected } }),
     );
@@ -862,6 +863,28 @@ describe("with a key Google rejects", { timeout: 60_000 }, () => {
       await (await m.ctx.newPage()).goto("https://x.com/home");
       const panel = await openPanel(m.ctx, m.extension);
       await poll(() => panel.innerText(".sheet")).toMatch(/Google rejected your API key/);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
+  it("doesn't try it again after Chrome restarts the service worker", async () => {
+    const m = await launch([POSTS[0]!], (route) =>
+      route.fulfill({ status: 400, json: { error: rejected } }),
+    );
+    try {
+      const x = await m.ctx.newPage();
+      await x.goto("https://x.com/home");
+      const panel = await openPanel(m.ctx, m.extension);
+      await poll(() => panel.innerText(".sheet")).toMatch(/Google rejected your API key/);
+      const asked = m.sent.length;
+      // As Chrome does to a worker that's been idle.
+      const cdp = await m.ctx.newCDPSession(panel);
+      await cdp.send("ServiceWorker.enable");
+      await cdp.send("ServiceWorker.stopAllWorkers");
+      await append(x, cell({ id: "626", handle: "later", name: "Later", text: "New post" }));
+      await sleep(1500);
+      expect(m.sent).toHaveLength(asked);
     } finally {
       await m.ctx.close();
     }

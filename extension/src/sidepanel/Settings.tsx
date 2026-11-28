@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import type { HiddenPost } from "../core/checked.ts";
 import { USD_PER_MILLION_TOKENS } from "../core/decisions.ts";
 import { GOBLIN_GLYPH } from "../core/glyphs.ts";
@@ -27,6 +27,23 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
   const usage = useUsage();
   const host = useHost();
   const byKind = useMemo(() => Map.groupBy(hidden, ({ verdict }) => verdict.category), [hidden]);
+  const trustedSection = useRef<HTMLElement>(null);
+  /** Where the chip just removed was, once the list no longer has it. */
+  const removedAt = useRef<number | null>(null);
+
+  // Focus goes to the chip that took the removed one's place, or to the switch above once none
+  // are left, so it isn't lost with the chip.
+  useEffect(() => {
+    const at = removedAt.current;
+    if (at === null) return;
+    removedAt.current = null;
+    const section = trustedSection.current;
+    const chips = section?.querySelectorAll<HTMLElement>(".chip button") ?? [];
+    (
+      chips[Math.min(at, chips.length - 1)] ??
+      section?.querySelector<HTMLElement>('[role="switch"]')
+    )?.focus();
+  }, [settings.trusted]);
 
   return (
     <div className="settings">
@@ -70,7 +87,7 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
         </p>
       </section>
 
-      <section aria-labelledby="trusted-title">
+      <section ref={trustedSection} aria-labelledby="trusted-title">
         <h2 id="trusted-title" className="section-title">
           Always show
         </h2>
@@ -84,13 +101,16 @@ export function Settings(props: { settings: SettingsData; apiKey: string; hidden
         </ul>
         {settings.trusted.length ? (
           <ul className="chips">
-            {settings.trusted.map((handle) => (
+            {settings.trusted.map((handle, i) => (
               <li key={handle} className="chip">
                 @{handle}
                 <button
                   type="button"
                   aria-label={`Stop always showing @${handle}`}
-                  onClick={() => host.updateSettings(trusting(handle, false))}
+                  onClick={() => {
+                    removedAt.current = i;
+                    host.updateSettings(trusting(handle, false));
+                  }}
                 >
                   <Icon d={ICONS.close} size={14} weight={2.2} />
                 </button>

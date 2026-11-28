@@ -864,6 +864,26 @@ describe("feed and checked-list sync", { timeout: 60_000 }, () => {
 });
 
 describe("side panel focus", { timeout: 60_000 }, () => {
+  it("moves along the Always show chips as they're removed", async () => {
+    const m = await launch([]);
+    try {
+      await settings(m.sw, { trusted: ["first", "second"] });
+      const panel = await openPanel(m.ctx, m.extension);
+      await panel.click('[aria-label="Settings"]');
+      await panel.focus('[aria-label="Stop always showing @first"]');
+      await panel.keyboard.press("Enter");
+      await poll(() =>
+        panel.locator('[aria-label="Stop always showing @second"]:focus').count(),
+      ).toBe(1);
+      await panel.keyboard.press("Enter");
+      await poll(() =>
+        panel.locator('[role="switch"][aria-label="People you follow"]:focus').count(),
+      ).toBe(1);
+    } finally {
+      await m.ctx.close();
+    }
+  });
+
   it("stays on the page when the Undo bar closes with nothing left hidden", async () => {
     const post = { id: "627", handle: "slopper", name: "Growth Guru", text: "Hooks [ai_slop .8]" };
     const m = await launch([post]);

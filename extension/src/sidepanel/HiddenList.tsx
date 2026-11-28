@@ -39,6 +39,18 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   const [recent, setRecent] = useState<Recent | null>(null);
   const [prevHidden, setPrevHidden] = useState(hidden);
   const filterSelect = useRef<HTMLSelectElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const restoring = useRef<string | null>(null);
+
+  // Focus stays with the post Undo brought back, once the list has it again.
+  useEffect(() => {
+    const id = restoring.current;
+    if (!id || !hidden.some(({ post }) => post.id === id)) return;
+    restoring.current = null;
+    list.current
+      ?.querySelector<HTMLElement>(`.item[data-id="${CSS.escape(id)}"] .item-open`)
+      ?.focus();
+  }, [hidden]);
 
   // Clear the undo bar as soon as the let-through is undone elsewhere (in X or Settings).
   if (hidden !== prevHidden) {
@@ -115,7 +127,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
     if (recent.action === "not-slop") host.setNotSlop(recent.id, false);
     else host.updateSettings(trusting(recent.handle, false));
     setRecent(null);
-    focusFallback();
+    restoring.current = recent.id;
   }
 
   function dismissRecent(hadFocus: boolean) {
@@ -129,37 +141,36 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
   return (
     <section className="hidden" aria-label="Hidden posts">
       <div className="list-head">
-        <h2>
-          {canFilter ? (
-            <span className="list-title">
-              <span key={heading} className="list-title-text" aria-hidden="true">
-                {heading}
-              </span>
-              <Icon d={ICONS.chevron} size={16} weight={2.4} />
-              <select
-                ref={filterSelect}
-                aria-label="Filter hidden posts by kind"
-                title="Show one kind"
-                value={active}
-                onChange={(event) => {
-                  setFilter(event.currentTarget.value as CategoryId | "");
-                  setLimit(PAGE_SIZE);
-                  setOpen(null);
-                  if (initialOrder.size) setInitialOrder(new Map());
-                }}
-              >
-                <option value="">All ({hidden.length})</option>
-                {kinds.map(([id, count]) => (
-                  <option key={id} value={id}>
-                    {CATEGORY[id].label} ({count})
-                  </option>
-                ))}
-              </select>
-            </span>
-          ) : (
-            heading
-          )}
-        </h2>
+        {canFilter ? (
+          // The select is beside the heading, not in it, so the heading reads as its title alone.
+          <div className="list-title">
+            <h2 key={heading} className="list-title-text">
+              {heading}
+            </h2>
+            <Icon d={ICONS.chevron} size={16} weight={2.4} />
+            <select
+              ref={filterSelect}
+              aria-label="Filter hidden posts by kind"
+              title="Show one kind"
+              value={active}
+              onChange={(event) => {
+                setFilter(event.currentTarget.value as CategoryId | "");
+                setLimit(PAGE_SIZE);
+                setOpen(null);
+                if (initialOrder.size) setInitialOrder(new Map());
+              }}
+            >
+              <option value="">All ({hidden.length})</option>
+              {kinds.map(([id, count]) => (
+                <option key={id} value={id}>
+                  {CATEGORY[id].label} ({count})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <h2>{heading}</h2>
+        )}
         <Peek on={peek} />
       </div>
 
@@ -173,7 +184,7 @@ export function HiddenList(props: { hidden: HiddenPost[]; peek: boolean }) {
       )}
 
       {visible.length > 0 ? (
-        <ul className="list">
+        <ul ref={list} className="list">
           {visible.map((item) => {
             const { id } = item.post;
             return (
@@ -296,6 +307,7 @@ function Item(props: {
     <li
       ref={row}
       className={open ? "item is-open" : "item"}
+      data-id={post.id}
       style={props.order !== undefined ? { "--order": props.order } : undefined}
     >
       <div className="item-inner">

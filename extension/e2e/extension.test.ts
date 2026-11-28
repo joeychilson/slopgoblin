@@ -379,6 +379,8 @@ describe("on X", { timeout: 30_000 }, () => {
     await shows(x, "slopper", "collapsed");
     await poll(() => panel.locator(`${row} .item-open`).count()).toBe(1);
     await poll(() => panel.locator(".undo-bar").count()).toBe(0);
+    // Focus goes to the post Undo brought back.
+    await poll(() => panel.locator(`${row} .item-open:focus`).count()).toBe(1);
     // Undoing from the post's bar in X immediately dismisses the undo bar and restores the row.
     await panel.click(`${row} .item-open`);
     await panel.click(`${row} button:has-text("Not AI slop")`);
@@ -403,10 +405,12 @@ describe("on X", { timeout: 30_000 }, () => {
     await panel.selectOption(".list-title select", "ragebait");
     await poll(() => panel.locator(".list .item").count()).toBe(1);
     expect(await panel.innerText(".list")).toContain("Rage Farm");
-    expect(await panel.innerText(".list-title-text")).toBe("Ragebait");
+    // The heading is named by what it shows, not by the options beside it.
+    const heading = (name: string) => panel.getByRole("heading", { level: 2, name, exact: true });
+    expect(await heading("Ragebait").count()).toBe(1);
     await panel.selectOption(".list-title select", "");
     await poll(() => panel.locator(".list .item").count()).toBeGreaterThan(1);
-    expect(await panel.innerText(".list-title-text")).toBe("Hidden posts");
+    expect(await heading("Hidden posts").count()).toBe(1);
   });
 
   it("re-checks a post when a lazy-loaded image arrives later", async () => {

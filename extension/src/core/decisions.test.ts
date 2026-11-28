@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { DecisionError, addsContext, decide, questionKey } from "./decisions.ts";
+import { DecisionError, decide, questionKey } from "./decisions.ts";
 import type { PostContent } from "./post.ts";
 
 const post = (over: Partial<PostContent> = {}): PostContent => ({
@@ -8,50 +8,36 @@ const post = (over: Partial<PostContent> = {}): PostContent => ({
   ...over,
 });
 
-describe("addsContext", () => {
-  const note = { text: "Made with AI.", rated: false };
-  const reply = post({ replyTo: { handle: "parent", text: "Hi" } });
+describe("questionKey", () => {
+  const unrated = { text: "Made with AI.", rated: false };
+  const rated = { ...unrated, rated: true };
+  const quote = { handle: "quoted", text: "Look" };
   const img1 = "https://pbs.twimg.com/media/a.jpg";
   const img2 = "https://pbs.twimg.com/media/b.jpg";
   const img3 = "https://pbs.twimg.com/media/c.jpg";
 
-  it("is true for a parent, images, note or note rating the post was judged without", () => {
-    expect(addsContext(reply, post())).toBe(true);
-    expect(addsContext(post({ images: [img1] }), post())).toBe(true);
-    expect(addsContext(post({ images: [img1, img2] }), post({ images: [img1] }))).toBe(true);
-    expect(addsContext(post({ readerNote: note }), post())).toBe(true);
-    expect(
-      addsContext(post({ readerNote: { ...note, rated: true } }), post({ readerNote: note })),
-    ).toBe(true);
-    const quote = { handle: "quoted", text: "Look" };
-    expect(addsContext(post({ quote: { ...quote, readerNote: note } }), post({ quote }))).toBe(
-      true,
-    );
-  });
-
-  it("is false for the same, less, or images beyond the two sent", () => {
-    expect(addsContext(reply, reply)).toBe(false);
-    expect(addsContext(post(), reply)).toBe(false);
-    expect(addsContext(post({ images: [img1, img2, img3] }), post({ images: [img1, img2] }))).toBe(
-      false,
-    );
-  });
-});
-
-describe("questionKey", () => {
-  it("changes for every kind of context that addsContext re-checks", () => {
+  it("changes for a parent, thread continuation, images, note, or note rating", () => {
     const alone = questionKey(post());
-    const unrated = { text: "Made with AI.", rated: false };
-    const rated = { ...unrated, rated: true };
-    const quote = { handle: "quoted", text: "Look" };
     expect(questionKey(post({ replyTo: { handle: "other", text: "Hi" } }))).not.toBe(alone);
     expect(questionKey(post({ replyTo: { handle: "Someone", text: "Part one" } }))).not.toBe(alone);
-    expect(questionKey(post({ images: ["https://pbs.twimg.com/media/a.jpg"] }))).not.toBe(alone);
+    expect(questionKey(post({ images: [img1] }))).not.toBe(alone);
+    expect(questionKey(post({ images: [img1, img2] }))).not.toBe(
+      questionKey(post({ images: [img1] })),
+    );
     expect(questionKey(post({ readerNote: unrated }))).not.toBe(alone);
     expect(questionKey(post({ readerNote: rated }))).not.toBe(
       questionKey(post({ readerNote: unrated })),
     );
     expect(questionKey(post({ quote: { ...quote, readerNote: unrated } }))).not.toBe(alone);
+    expect(questionKey(post({ quote: { ...quote, readerNote: rated } }))).not.toBe(
+      questionKey(post({ quote: { ...quote, readerNote: unrated } })),
+    );
+  });
+
+  it("ignores images beyond the two sent", () => {
+    expect(questionKey(post({ images: [img1, img2, img3] }))).toBe(
+      questionKey(post({ images: [img1, img2] })),
+    );
   });
 });
 

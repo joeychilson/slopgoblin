@@ -1,5 +1,5 @@
 import type { CheckedPost } from "../core/checked.ts";
-import { addsContext, type Scores } from "../core/decisions.ts";
+import { questionKey, type Scores } from "../core/decisions.ts";
 import type {
   ClassifyResponse,
   Priority,
@@ -202,7 +202,8 @@ class Feed {
   private absorb(t: Tracked, read: Post) {
     const merged = mergePost(t.post, read);
     const gained =
-      addsContext(merged, t.post) || (!hasJudgeableContent(t.post) && hasJudgeableContent(merged));
+      questionKey(merged) !== questionKey(t.post) ||
+      (!hasJudgeableContent(t.post) && hasJudgeableContent(merged));
     if (!gained) return false;
     t.post = merged;
     if (t.status === "done") t.status = "idle";
@@ -542,7 +543,8 @@ const hasJudgeableContent = (post: Post) =>
 function bestNote(prev: ReaderNote | undefined, next: ReaderNote | undefined) {
   if (!prev) return next;
   if (!next) return prev;
-  return prev.rated && !next.rated ? prev : next;
+  if (prev.rated !== next.rated) return prev.rated ? prev : next;
+  return next.text.length > prev.text.length ? next : prev;
 }
 
 /** Keeps previously discovered context if X unmounts a parent or media while new content arrives. */

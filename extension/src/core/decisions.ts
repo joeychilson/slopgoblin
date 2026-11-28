@@ -46,20 +46,6 @@ export function questionKey(post: PostContent) {
   return notes.length ? `${key}.${hash(notes.join("|"))}` : key;
 }
 
-/** Whether `next` carries new context (`replyTo`, images, notes) worth re-judging on. */
-export function addsContext(next: PostContent, prev: PostContent) {
-  if (imageCount(next) > imageCount(prev)) return true;
-  const context = (post: PostContent) => [
-    post.replyTo,
-    post.readerNote,
-    post.readerNote?.rated,
-    post.quote?.readerNote,
-    post.quote?.readerNote?.rated,
-  ];
-  const before = context(prev);
-  return context(next).some((part, i) => part && !before[i]);
-}
-
 type DecisionErrorKind = "auth" | "rate" | "blocked" | "media" | "transient" | "fatal";
 
 export class DecisionError extends Error {

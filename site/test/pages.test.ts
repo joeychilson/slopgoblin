@@ -11,7 +11,7 @@ describe("pages", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Eats the junk in your X feed");
-    expect(html).toContain("See what it hid, and why");
+    expect(html).toContain("Both are live.");
     expect(html).toContain("Set up in a minute");
     expect(html).toContain(`<link rel="canonical" href="${site.origin}/"/>`);
   });
